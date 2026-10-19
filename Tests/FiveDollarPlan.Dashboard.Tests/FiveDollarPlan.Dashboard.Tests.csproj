@@ -15,8 +15,13 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <!-- Compile the actual calculator source without depending on MVC or EF Core. -->
+    <!-- Link Dashboard production sources; no database or shared-service dependency. -->
     <Compile Include="../../Services/Dashboard/DashboardFinancialCalculator.cs"
              Link="DashboardFinancialCalculator.cs" />
+    <Compile Include="../../Controllers/DashboardController.cs" Link="DashboardController.cs" />
+    <Compile Include="../../Models/Dashboard/DashboardPageViewModel.cs" Link="DashboardPageViewModel.cs" />
+    <Compile Include="../../Services/Dashboard/DashboardPageBuilder.cs" Link="DashboardPageBuilder.cs" />
+    <Compile Include="../../Services/Dashboard/DashboardPreviewData.cs" Link="DashboardPreviewData.cs" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("FiveDollarPlan")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fd1b19b8cf811ac299714505fe769465836bcc39")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cd3977dbd0aef5dc71d0b4198f194afd6569e8da")]
 [assembly: System.Reflection.AssemblyProductAttribute("FiveDollarPlan")]
 [assembly: System.Reflection.AssemblyTitleAttribute("FiveDollarPlan")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,4 +1,9 @@
+using Microsoft.EntityFrameworkCore;
+using FiveDollarPlan.Data;
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite("Data Source=fivedollar.db"));
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();

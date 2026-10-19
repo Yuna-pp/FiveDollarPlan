@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace FiveDollarPlan.Models;
 
@@ -15,4 +16,8 @@ public class RegisterViewModel
     [MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
     [DataType(DataType.Password)]
     public string Password { get; set; } = string.Empty;
+
+    // Optional profile picture
+    [Display(Name = "Profile Picture")]
+    public IFormFile? Avatar { get; set; }
 }

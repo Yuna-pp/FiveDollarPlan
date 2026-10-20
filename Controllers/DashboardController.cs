@@ -1,5 +1,6 @@
 using FiveDollarPlan.Models.Dashboard;
 using FiveDollarPlan.Services.Dashboard;
+using FiveDollarPlan.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
@@ -8,13 +9,31 @@ using Microsoft.Extensions.Hosting;
 namespace FiveDollarPlan.Controllers;
 
 [Authorize]
-public class DashboardController(IWebHostEnvironment environment) : Controller
+public class DashboardController(IWebHostEnvironment environment,
+    ICurrentUserService currentUserService, IPlanService planService) : Controller
 {
     [HttpGet]
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
-        // Do not turn missing data services into a misleading zero balance.
-        return View("Index", new DashboardPageViewModel { CanPreview = environment.IsDevelopment() });
+        // Identity comes only from the existing authenticated session.
+        var userId = currentUserService.GetRequiredUserId();
+        DashboardPageViewModel model;
+        try
+        {
+            var plans = await planService.GetPlansForUserAsync(userId);
+            model = DashboardPageBuilder.BuildPlans(plans.Select(plan =>
+                new DashboardPageBuilder.PlanInput(plan.Id, plan.Name, plan.EndAtUtc)), DateTime.UtcNow);
+        }
+        catch (Exception)
+        {
+            // A failed query is unavailable data, not a successful empty result.
+            model = new DashboardPageViewModel
+            {
+                PlanLoadError = "Unable to load your plans. Please try again later."
+            };
+        }
+
+        return View("Index", model with { CanPreview = environment.IsDevelopment() });
     }
 
     [HttpGet]

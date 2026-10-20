@@ -15,18 +15,9 @@ internal static class DashboardPageBuilder
             .Where(payment => payment.PayerId == userId || payment.RecipientId == userId)
             .ToArray();
         var summary = DashboardFinancialCalculator.Calculate(userId, userPayments);
-        var activePlans = new List<DashboardPlanRow>();
-        var endedPlans = new List<DashboardPlanRow>();
-
-        foreach (var plan in plans)
+        return BuildPlans(plans, utcNow) with
         {
-            var row = new DashboardPlanRow(plan.Id, plan.Name, plan.EndAtUtc);
-            (HasEnded(plan.EndAtUtc, utcNow) ? endedPlans : activePlans).Add(row);
-        }
-
-        return new DashboardPageViewModel
-        {
-            DataAvailable = true,
+            PaymentDataAvailable = true,
             WeeklySummary = new DashboardWeeklyViewModel(
                 DashboardWeeklyCalculator.Calculate(userId, userPayments, utcNow)
                     .Select(week => new DashboardWeekViewModel(week.WeekStart, week.Income, week.Expenses))
@@ -35,14 +26,33 @@ internal static class DashboardPageBuilder
             ConfirmedExpense = summary.ConfirmedExpense,
             PendingIncome = summary.PendingIncome,
             PendingExpense = summary.PendingExpense,
-            ActivePlans = activePlans,
-            EndedPlans = endedPlans,
             Payments = userPayments.Select(payment => new DashboardPaymentRow(
                 payment.RecipientId == userId ? "Income" : "Expense",
                 payment.Amount,
                 payment.ReceivedAtUtc != null ? DashboardPaymentState.Confirmed :
                 payment.PaidAtUtc != null ? DashboardPaymentState.MarkedPaid :
                 DashboardPaymentState.Pending)).ToArray()
+        };
+    }
+
+    internal static DashboardPageViewModel BuildPlans(IEnumerable<PlanInput> plans, DateTime utcNow)
+    {
+        utcNow = DashboardPlanRow.AsUtc(utcNow);
+        var activePlans = new List<DashboardPlanRow>();
+        var endedPlans = new List<DashboardPlanRow>();
+        foreach (var plan in plans)
+        {
+            var endAtUtc = DashboardPlanRow.AsUtc(plan.EndAtUtc);
+            var row = new DashboardPlanRow(plan.Id, plan.Name, endAtUtc);
+            (HasEnded(endAtUtc, utcNow) ? endedPlans : activePlans).Add(row);
+        }
+
+        // Payment fields intentionally remain unavailable until their service is integrated.
+        return new DashboardPageViewModel
+        {
+            PlanDataAvailable = true,
+            ActivePlans = activePlans,
+            EndedPlans = endedPlans
         };
     }
 

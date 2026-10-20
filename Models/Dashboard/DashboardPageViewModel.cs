@@ -6,7 +6,9 @@ namespace FiveDollarPlan.Models.Dashboard;
 public sealed record DashboardPageViewModel
 {
     public DashboardWeeklyViewModel? WeeklySummary { get; init; }
-    public bool DataAvailable { get; init; }
+    public bool PlanDataAvailable { get; init; }
+    public bool PaymentDataAvailable { get; init; }
+    public string? PlanLoadError { get; init; }
     public bool IsPreview { get; init; }
     public bool CanPreview { get; init; }
     public decimal? ConfirmedIncome { get; init; }
@@ -20,8 +22,16 @@ public sealed record DashboardPageViewModel
 
 public sealed record DashboardPlanRow(Guid Id, string Name, DateTime EndAtUtc)
 {
+    // SQLite stores UTC values without preserving DateTime.Kind.
+    internal static DateTime AsUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Utc => value,
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => throw new ArgumentException("Dashboard plan dates must be UTC, not local time.", nameof(value))
+    };
+
     public string EndAtNewZealand => TimeZoneInfo.ConvertTime(
-        new DateTimeOffset(EndAtUtc), TimeZoneInfo.FindSystemTimeZoneById("Pacific/Auckland"))
+        new DateTimeOffset(AsUtc(EndAtUtc)), TimeZoneInfo.FindSystemTimeZoneById("Pacific/Auckland"))
         .ToString("dd MMM yyyy HH:mm 'UTC'zzz '(Pacific/Auckland)'", CultureInfo.GetCultureInfo("en-NZ"));
 }
 

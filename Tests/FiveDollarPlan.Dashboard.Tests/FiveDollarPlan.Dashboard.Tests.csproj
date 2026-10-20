@@ -15,7 +15,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <!-- Link Dashboard production sources; no database or shared-service dependency. -->
+    <!-- Link Dashboard production sources; use shared contracts without a database dependency. -->
     <Compile Include="../../Services/Dashboard/DashboardFinancialCalculator.cs"
              Link="DashboardFinancialCalculator.cs" />
     <Compile Include="../../Controllers/DashboardController.cs" Link="DashboardController.cs" />
@@ -23,6 +23,11 @@
     <Compile Include="../../Services/Dashboard/DashboardPageBuilder.cs" Link="DashboardPageBuilder.cs" />
     <Compile Include="../../Services/Dashboard/DashboardPreviewData.cs" Link="DashboardPreviewData.cs" />
     <Compile Include="../../Services/Dashboard/DashboardWeeklyCalculator.cs" Link="DashboardWeeklyCalculator.cs" />
+    <Compile Include="../../Services/ICurrentUserService.cs" Link="ICurrentUserService.cs" />
+    <Compile Include="../../Services/IPlanService.cs" Link="IPlanService.cs" />
+    <Compile Include="../../Models/PlanSummaryDto.cs" Link="PlanSummaryDto.cs" />
+    <Compile Include="../../Models/PlanDto.cs" Link="PlanDto.cs" />
+    <Compile Include="../../Models/Plan.cs" Link="Plan.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

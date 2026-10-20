@@ -43,12 +43,17 @@
         These examples belong to an imaginary participant, not your account. No payments or plans are saved.
     </div>
 }
-else if (!Model.DataAvailable)
+else if (!Model.PaymentDataAvailable)
 {
     <div class="alert alert-info" role="status">
-        <strong>Data services not connected.</strong>
-        Your plans and payment records are not available yet. A dash means unavailable, not a zero balance.
+        <strong>Payment service not connected.</strong>
+        Your payment records and financial summaries are not available yet. A dash means unavailable, not a zero balance.
     </div>
+}
+
+@if (Model.PlanLoadError is not null)
+{
+    <div class="alert alert-danger" role="alert">@Model.PlanLoadError</div>
 }
 
 <section aria-labelledby="all-time-heading" class="mb-4">
@@ -189,9 +194,9 @@ else if (!Model.DataAvailable)
             <div class="card h-100">
                 <div class="card-header bg-white"><h2 class="h5 mb-0">@planGroup.Title</h2></div>
                 <div class="card-body">
-                    @if (!Model.DataAvailable)
+                    @if (!Model.PlanDataAvailable)
                     {
-                        <p class="text-muted mb-0">Plan data is not connected yet.</p>
+                        <p class="text-muted mb-0">@(Model.PlanLoadError is null ? "Plan data is not connected yet." : "Plan data could not be loaded.")</p>
                     }
                     else if (planGroup.Rows.Count == 0)
                     {
@@ -222,7 +227,7 @@ else if (!Model.DataAvailable)
 <section aria-labelledby="payment-heading" class="card">
     <div class="card-header bg-white"><h2 id="payment-heading" class="h5 mb-0">Payment confirmation status</h2></div>
     <div class="card-body">
-        @if (!Model.DataAvailable)
+        @if (!Model.PaymentDataAvailable)
         {
             <p class="text-muted mb-0">Payment data is not connected yet.</p>
         }

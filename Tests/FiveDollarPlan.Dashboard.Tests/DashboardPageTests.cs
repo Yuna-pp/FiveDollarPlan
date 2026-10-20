@@ -1,3 +1,5 @@
+using FiveDollarPlan.Models;
+using FiveDollarPlan.Services;
 using System.Reflection;
 using FiveDollarPlan.Controllers;
 using FiveDollarPlan.Models.Dashboard;
@@ -35,7 +37,8 @@ public class DashboardPageTests
 
         var model = Build(UserId, [], payments, Now);
 
-        Assert.True(model.DataAvailable);
+        Assert.True(model.PlanDataAvailable);
+        Assert.True(model.PaymentDataAvailable);
         Assert.False(model.IsPreview);
         Assert.Equal(4m, model.ConfirmedIncome);
         Assert.Equal(3m, model.ConfirmedExpense);
@@ -87,7 +90,8 @@ public class DashboardPageTests
     {
         var model = Build(UserId, [], [], Now);
 
-        Assert.True(model.DataAvailable);
+        Assert.True(model.PlanDataAvailable);
+        Assert.True(model.PaymentDataAvailable);
         Assert.Equal(0m, model.ConfirmedIncome);
         Assert.Equal(0m, model.ConfirmedExpense);
         Assert.Equal(0m, model.PendingIncome);
@@ -117,15 +121,16 @@ public class DashboardPageTests
     [Theory]
     [InlineData("Development", true)]
     [InlineData("Production", false)]
-    public void Index_ShowsUnavailableDataWithoutFictionalValues(string environment, bool canPreview)
+    public async Task Index_ShowsRealEmptyPlansWithoutFictionalPayments(string environment, bool canPreview)
     {
-        var controller = new DashboardController(new TestEnvironment(environment));
+        var controller = Controller(environment);
 
-        var result = Assert.IsType<ViewResult>(controller.Index());
+        var result = Assert.IsType<ViewResult>(await controller.Index());
         var model = Assert.IsType<DashboardPageViewModel>(result.Model);
 
         Assert.Equal("Index", result.ViewName);
-        Assert.False(model.DataAvailable);
+        Assert.True(model.PlanDataAvailable);
+        Assert.False(model.PaymentDataAvailable);
         Assert.False(model.IsPreview);
         Assert.Equal(canPreview, model.CanPreview);
         Assert.Null(model.ConfirmedIncome);
@@ -140,14 +145,15 @@ public class DashboardPageTests
     [Fact]
     public void Preview_InDevelopmentReturnsClearlyMarkedFictionalData()
     {
-        var controller = new DashboardController(new TestEnvironment(Environments.Development));
+        var controller = Controller(Environments.Development);
 
         var result = Assert.IsType<ViewResult>(controller.Preview());
         var model = Assert.IsType<DashboardPageViewModel>(result.Model);
 
         Assert.Equal("Index", result.ViewName);
         Assert.True(model.IsPreview);
-        Assert.True(model.DataAvailable);
+        Assert.True(model.PlanDataAvailable);
+        Assert.True(model.PaymentDataAvailable);
         Assert.Equal(5m, model.ConfirmedIncome);
         Assert.Equal(3m, model.ConfirmedExpense);
         Assert.Equal(3.5m, model.PendingIncome);
@@ -165,7 +171,7 @@ public class DashboardPageTests
     [InlineData("Custom")]
     public void Preview_OutsideDevelopmentReturnsNotFound(string environment)
     {
-        var controller = new DashboardController(new TestEnvironment(environment));
+        var controller = Controller(environment);
 
         Assert.IsType<NotFoundResult>(controller.Preview());
     }
@@ -217,13 +223,14 @@ public class DashboardPageTests
     }
 
     [Fact]
-    public void Index_DoesNotInventWeeklyData()
+    public async Task Index_DoesNotInventWeeklyData()
     {
-        var result = Assert.IsType<ViewResult>(new DashboardController(new TestEnvironment("Development")).Index());
+        var result = Assert.IsType<ViewResult>(await Controller("Development").Index());
         var model = Assert.IsType<DashboardPageViewModel>(result.Model);
 
         Assert.Null(model.WeeklySummary);
-        Assert.False(model.DataAvailable);
+        Assert.True(model.PlanDataAvailable);
+        Assert.False(model.PaymentDataAvailable);
     }
 
     [Fact]
@@ -281,6 +288,104 @@ public class DashboardPageTests
         Assert.Equal(3m, model.ConfirmedExpense);
         Assert.Equal(1.5m, weekly.CurrentWeek.Income);
         Assert.Equal(1m, weekly.CurrentWeek.Expenses);
+    }
+
+    [Fact]
+    public async Task Index_UsesAuthenticatedIdentityAndMapsRealPlans()
+    {
+        var plans = new FakePlans { Results = [
+            new() { Id = OtherId, Name = "Real active", EndAtUtc = DateTime.UtcNow.AddDays(2) },
+            new() { Id = ThirdId, Name = "Real ended", EndAtUtc = DateTime.UtcNow.AddDays(-2) }] };
+        var result = Assert.IsType<ViewResult>(await Controller("Development", plans).Index());
+        var model = Assert.IsType<DashboardPageViewModel>(result.Model);
+        Assert.Equal(UserId, plans.RequestedUser);
+        Assert.Equal("Real active", Assert.Single(model.ActivePlans).Name);
+        Assert.Equal(OtherId, model.ActivePlans[0].Id);
+        Assert.Equal(plans.Results[0].EndAtUtc, model.ActivePlans[0].EndAtUtc);
+        Assert.Equal(ThirdId, Assert.Single(model.EndedPlans).Id);
+        Assert.True(model.PlanDataAvailable);
+        Assert.Null(model.PlanLoadError);
+        Assert.False(model.PaymentDataAvailable);
+        Assert.Null(model.ConfirmedIncome);
+        Assert.Null(model.ConfirmedExpense);
+        Assert.Null(model.PendingIncome);
+        Assert.Null(model.PendingExpense);
+        Assert.Null(model.WeeklySummary);
+        Assert.Empty(model.Payments);
+    }
+
+    [Fact]
+    public async Task Index_QueryFailureShowsSafeErrorInsteadOfEmptySuccess()
+    {
+        var model = Assert.IsType<DashboardPageViewModel>(Assert.IsType<ViewResult>(
+            await Controller("Development", new FakePlans { Fail = true }).Index()).Model);
+        Assert.False(model.PlanDataAvailable);
+        Assert.False(model.PaymentDataAvailable);
+        Assert.False(string.IsNullOrWhiteSpace(model.PlanLoadError));
+        Assert.DoesNotContain("private connection details", model.PlanLoadError);
+        Assert.Empty(model.ActivePlans);
+        Assert.Empty(model.EndedPlans);
+        Assert.Null(model.WeeklySummary);
+    }
+
+    [Theory]
+    [InlineData(DateTimeKind.Utc)]
+    [InlineData(DateTimeKind.Unspecified)]
+    public void PlansOnly_NormalizesUtcAndPreservesExactBoundary(DateTimeKind kind)
+    {
+        var end = DateTime.SpecifyKind(Now, kind);
+        var model = BuildPlans([new(OtherId, "Boundary", end), new(ThirdId, "Next", end.AddTicks(1))], end);
+        Assert.Equal(DateTimeKind.Utc, Assert.Single(model.EndedPlans).EndAtUtc.Kind);
+        Assert.Equal(ThirdId, Assert.Single(model.ActivePlans).Id);
+        Assert.Equal("20 Oct 2026 13:00 UTC+13:00 (Pacific/Auckland)", model.EndedPlans[0].EndAtNewZealand);
+        Assert.True(model.PlanDataAvailable);
+        Assert.False(model.PaymentDataAvailable);
+        Assert.Null(model.ConfirmedIncome);
+    }
+
+    [Fact]
+    public void PlansOnly_RejectsLocalDates()
+    {
+        Assert.Throws<ArgumentException>(() => BuildPlans([], DateTime.SpecifyKind(Now, DateTimeKind.Local)));
+        Assert.Throws<ArgumentException>(() => BuildPlans([new(OtherId, "Invalid", DateTime.SpecifyKind(Now, DateTimeKind.Local))], Now));
+    }
+
+    [Fact]
+    public void Preview_DoesNotQueryRealServices()
+    {
+        var plans = new FakePlans { Fail = true };
+        Assert.IsType<ViewResult>(Controller("Development", plans).Preview());
+        Assert.Null(plans.RequestedUser);
+    }
+
+    [Fact]
+    public void Index_DoesNotAcceptBrowserUserId()
+    {
+        Assert.Empty(typeof(DashboardController).GetMethod(nameof(DashboardController.Index))!.GetParameters());
+    }
+
+    private static DashboardController Controller(string environment, FakePlans? plans = null) =>
+        new(new TestEnvironment(environment), new FakeCurrentUser(), plans ?? new FakePlans());
+
+    private sealed class FakeCurrentUser : ICurrentUserService
+    {
+        public bool IsAuthenticated => true;
+        public Guid GetRequiredUserId() => UserId;
+    }
+
+    private sealed class FakePlans : IPlanService
+    {
+        public Guid? RequestedUser { get; private set; }
+        public bool Fail { get; init; }
+        public IReadOnlyList<PlanSummaryDto> Results { get; init; } = [];
+        public Task<IReadOnlyList<PlanSummaryDto>> GetPlansForUserAsync(Guid userId)
+        {
+            RequestedUser = userId;
+            return Fail ? Task.FromException<IReadOnlyList<PlanSummaryDto>>(new InvalidOperationException("private connection details"))
+                : Task.FromResult(Results);
+        }
+        public Task<PlanDto?> GetPlanAsync(Guid planId) => throw new NotSupportedException();
+        public Task<IReadOnlyList<Guid>> GetMemberIdsAtAsync(Guid planId, DateTime eventTimeUtc) => throw new NotSupportedException();
     }
 
     private sealed class TestEnvironment(string environmentName) : IWebHostEnvironment

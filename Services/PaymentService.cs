@@ -4,15 +4,26 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FiveDollarPlan.Services;
 
-public class PaymentService
+public class PaymentService : IPaymentService
 {
     private readonly AppDbContext _db;
+    private readonly PenaltyEventService _events;
 
-    public PaymentService(AppDbContext db)
+    public PaymentService(
+        AppDbContext db,
+        PenaltyEventService events)
     {
         _db = db;
+        _events = events;
     }
 
+    // 触发违约：交给事件服务生成事件和付款记录。
+    public Task<Guid> TriggerAsync(Guid planId, Guid actorId)
+    {
+        return _events.TriggerAsync(planId, actorId);
+    }
+
+    // 付款人确认已在线下付款。
     public async Task MarkPaidAsync(Guid paymentId, Guid actorId)
     {
         var payment = await _db.Set<PaymentRecord>()
@@ -28,7 +39,9 @@ public class PaymentService
         await _db.SaveChangesAsync();
     }
 
-    public async Task ConfirmReceivedAsync(Guid paymentId, Guid actorId)
+    // 收款人确认已在线下收到付款。
+    public async Task ConfirmReceivedAsync(
+        Guid paymentId, Guid actorId)
     {
         var payment = await _db.Set<PaymentRecord>()
             .SingleOrDefaultAsync(p => p.Id == paymentId);
@@ -42,6 +55,8 @@ public class PaymentService
 
         await _db.SaveChangesAsync();
     }
+
+    // 查询某个用户作为付款人或收款人的付款记录。
     public async Task<IReadOnlyList<PaymentDto>> GetUserPaymentsAsync(
         Guid userId)
     {
@@ -61,6 +76,8 @@ public class PaymentService
             })
             .ToListAsync();
     }
+
+    // 分别统计一个计划中，每次违约事件的确认情况。
     public async Task<PlanPaymentStatusDto> GetPlanPaymentStatusAsync(
         Guid planId)
     {

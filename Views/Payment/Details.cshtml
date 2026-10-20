@@ -53,24 +53,38 @@
 
 <h2>Payment status</h2>
 
-@if (Model.CurrentEvent == null)
+@if (Model.Events.Count == 0)
 {
     <p>No penalty event yet.</p>
 }
 else
 {
-    <p>
-        Event time (UTC):
-        @Model.CurrentEvent.TriggeredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")
-    </p>
+    <p>Newest breaches appear first.</p>
+    @foreach (var penaltyEvent in Model.Events)
+    {
+        var eventPayments = Model.Payments
+            .Where(p => p.PenaltyEventId == penaltyEvent.Id).ToList();
+        bool? allConfirmed = eventPayments.Count == 0 ? null
+            : eventPayments.All(p => p.PaidAtUtc.HasValue && p.ReceivedAtUtc.HasValue);
 
-    @if (Model.AllConfirmed == true)
+    <section class="card mb-4" id="event-@penaltyEvent.Id">
+    <div class="card-body">
+    <h3 class="h5">
+        Event time (UTC):
+        @penaltyEvent.TriggeredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")
+        @if (penaltyEvent.Id == Model.Events[0].Id)
+        {
+            <span class="badge bg-primary">Latest</span>
+        }
+    </h3>
+
+    @if (allConfirmed == true)
     {
         <div class="alert alert-success">
             All payments have been confirmed.
         </div>
     }
-    else if (Model.AllConfirmed == false)
+    else if (allConfirmed == false)
     {
         <p>Some payments are still waiting for confirmation.</p>
     }
@@ -90,16 +104,16 @@ else
             </tr>
         </thead>
         <tbody>
-            @foreach (var payment in Model.Payments)
+            @foreach (var payment in eventPayments)
             {
-                var recipient = Model.Members
+                var recipient = Model.RecipientProfiles
                     .FirstOrDefault(u => u.Id == payment.RecipientId);
 
                 <tr>
                     <td>@(recipient?.Name ?? "Unknown user")</td>
                     <td>@payment.Amount.ToString("0.00")</td>
-                    <td>@(payment.PaidAtUtc.HasValue ? "Yes" : "Waiting")</td>
-                    <td>@(payment.ReceivedAtUtc.HasValue ? "Yes" : "Waiting")</td>
+                    <td><span class="badge @(payment.PaidAtUtc.HasValue ? "bg-success" : "bg-secondary")">@(payment.PaidAtUtc.HasValue ? "Confirmed" : "Waiting")</span></td>
+                    <td><span class="badge @(payment.ReceivedAtUtc.HasValue ? "bg-success" : "bg-secondary")">@(payment.ReceivedAtUtc.HasValue ? "Confirmed" : "Waiting")</span></td>
                     <td>
                         @if (payment.PayerId == Model.CurrentUserId &&
                              !payment.PaidAtUtc.HasValue)
@@ -132,4 +146,7 @@ else
             }
         </tbody>
     </table>
+    </div>
+    </section>
+    }
 }

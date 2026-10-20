@@ -2,6 +2,12 @@ namespace FiveDollarPlan.Models;
 
 public class PlanDetailsViewModel
 {
+    public IReadOnlyList<PenaltyEvent> Events { get; init; }
+        = Array.Empty<PenaltyEvent>();
+
+    public IReadOnlyList<UserProfileDto> RecipientProfiles { get; init; }
+        = Array.Empty<UserProfileDto>();
+
     // 计划名称、发起人、金额等信息
     public PlanDto Plan { get; init; } = null!;
 

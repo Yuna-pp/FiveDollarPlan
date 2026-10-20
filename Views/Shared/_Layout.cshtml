@@ -1,8 +1,33 @@
-﻿<!DOCTYPE html>
+﻿
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using FiveDollarPlan.Data
+@inject AppDbContext DbContext
+
+@{
+    string? avatarUrl = null;
+
+    if (User.Identity?.IsAuthenticated == true)
+    {
+        string? userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (Guid.TryParse(userId, out Guid parsedId))
+        {
+            avatarUrl = await DbContext.Users
+                .AsNoTracking()
+                .Where(u => u.Id == parsedId)
+                .Select(u => u.AvatarUrl)
+                .FirstOrDefaultAsync();
+        }
+    }
+}
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
     <title>@ViewData["Title"] - FiveDollarPlan</title>
 
     <link rel="stylesheet"
@@ -11,71 +36,149 @@
     <link rel="stylesheet"
           href="~/css/site.css"
           asp-append-version="true" />
+
+    <style>
+        /* Profile picture */
+        .profile-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .profile-button {
+            width: 42px;
+            height: 42px;
+            padding: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #dee2e6;
+            border-radius: 50%;
+            background-color: #f8f9fa;
+        }
+
+        .profile-button:hover {
+            border-color: #198754;
+        }
+
+        /* Mobile navigation */
+        @@media (max-width: 575.98px) {
+            .navbar-brand {
+                font-size: 1rem;
+                margin-right: 0;
+            }
+
+            .navbar-actions {
+                gap: 0.5rem !important;
+            }
+
+            .dashboard-link {
+                font-size: 0.875rem;
+            }
+
+            .profile-avatar {
+                width: 32px;
+                height: 32px;
+            }
+
+            .profile-button {
+                width: 38px;
+                height: 38px;
+            }
+        }
+    </style>
 </head>
+
 <body>
 
 <header>
-    <nav class="navbar navbar-expand-sm navbar-light bg-white border-bottom shadow-sm">
+    <nav class="navbar navbar-light bg-white border-bottom shadow-sm">
         <div class="container">
 
+            <!-- Logo -->
             <a class="navbar-brand fw-bold text-success"
                asp-controller="Home"
                asp-action="Index">
                 $ FiveDollarPlan
             </a>
 
-            <div class="ms-auto d-flex align-items-center gap-3">
+            <!-- Navigation -->
+            <div class="ms-auto d-flex align-items-center gap-3 navbar-actions">
 
                 @if (User.Identity?.IsAuthenticated == true)
                 {
-                    <a class="nav-link"
+                    <!-- Dashboard -->
+                    <a class="nav-link dashboard-link"
                        asp-controller="Dashboard"
                        asp-action="Index">
                         Dashboard
                     </a>
 
+                    <!-- Account dropdown -->
                     <div class="dropdown">
-                        <button class="btn btn-light rounded-circle"
+
+                        <button class="profile-button"
                                 type="button"
                                 data-bs-toggle="dropdown"
                                 aria-expanded="false"
                                 aria-label="Account menu">
-                            <span aria-hidden="true">👤</span>
+
+                            @if (!string.IsNullOrEmpty(avatarUrl))
+                            {
+                                <img src="@avatarUrl"
+                                     alt="My profile picture"
+                                     class="profile-avatar" />
+                            }
+                            else
+                            {
+                                <span aria-hidden="true">👤</span>
+                            }
+
                         </button>
 
                         <ul class="dropdown-menu dropdown-menu-end">
+
                             <li>
                                 <span class="dropdown-item-text text-muted small">
                                     @User.Identity.Name
                                 </span>
                             </li>
 
-                            <li><hr class="dropdown-divider" /></li>
+                            <li>
+                                <hr class="dropdown-divider" />
+                            </li>
 
                             <li>
                                 <form asp-controller="Account"
                                       asp-action="Logout"
                                       method="post">
+
                                     @Html.AntiForgeryToken()
 
                                     <button type="submit"
                                             class="dropdown-item text-danger">
                                         Logout
                                     </button>
+
                                 </form>
                             </li>
+
                         </ul>
                     </div>
                 }
                 else
                 {
+                    <!-- Login -->
                     <a class="nav-link"
                        asp-controller="Account"
                        asp-action="Login">
                         Login
                     </a>
 
-                    <a class="btn btn-success"
+                    <!-- Register -->
+                    <a class="btn btn-success btn-sm"
                        asp-controller="Account"
                        asp-action="Register">
                         Sign Up
@@ -87,6 +190,7 @@
     </nav>
 </header>
 
+<!-- Main content -->
 <div class="container">
     <main role="main" class="py-4">
         @RenderBody()

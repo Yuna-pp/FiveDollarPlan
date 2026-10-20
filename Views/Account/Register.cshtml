@@ -5,8 +5,7 @@
 }
 
 <h2>Create an Account</h2>
-
-<form asp-controller="Account" asp-action="Register" method="post">
+<form asp-controller="Account" asp-action="Register" method="post" enctype="multipart/form-data">
     @Html.AntiForgeryToken()
 
     <div asp-validation-summary="ModelOnly" class="text-danger"></div>
@@ -28,7 +27,16 @@
         <input asp-for="Password" class="form-control" type="password" />
         <span asp-validation-for="Password" class="text-danger"></span>
     </div>
+    <div class="mb-3">
+    <label asp-for="Avatar" class="form-label"></label>
 
+    <input asp-for="Avatar"
+           type="file"
+           class="form-control"
+           accept="image/jpeg,image/png,image/webp" />
+
+    <span asp-validation-for="Avatar" class="text-danger"></span>
+    </div>
     <button type="submit" class="btn btn-primary">
         Register
     </button>

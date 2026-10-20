@@ -1,0 +1,135 @@
+@model FiveDollarPlan.Models.PlanDetailsViewModel
+
+@{
+    ViewData["Title"] = "Plan Details";
+    bool isCreator = Model.CurrentUserId == Model.Plan.CreatorId;
+}
+
+<h1>@Model.Plan.Name</h1>
+
+<p>Creator: @(Model.Creator?.Name ?? "Unknown user")</p>
+<p>Amount per recipient: @Model.Plan.Amount.ToString("0.00")</p>
+<p>Mode: @Model.Plan.Mode</p>
+
+<h2>Members</h2>
+
+<ul>
+    @foreach (var member in Model.Members)
+    {
+        <li>
+            @if (!string.IsNullOrWhiteSpace(member.AvatarUrl))
+            {
+                <img src="@member.AvatarUrl"
+                     alt=""
+                     width="32"
+                     height="32" />
+            }
+            @member.Name
+        </li>
+    }
+</ul>
+
+@if (TempData["SuccessMessage"] is string success)
+{
+    <div class="alert alert-success">@success</div>
+}
+
+@if (TempData["PaymentError"] is string error)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (isCreator)
+{
+    <form asp-controller="Payment" asp-action="Trigger" method="post">
+        <input type="hidden" name="planId" value="@Model.Plan.Id" />
+        <button type="submit" class="btn btn-danger">
+            Record a breach
+        </button>
+    </form>
+}
+
+<hr />
+
+<h2>Payment status</h2>
+
+@if (Model.CurrentEvent == null)
+{
+    <p>No penalty event yet.</p>
+}
+else
+{
+    <p>
+        Event time (UTC):
+        @Model.CurrentEvent.TriggeredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")
+    </p>
+
+    @if (Model.AllConfirmed == true)
+    {
+        <div class="alert alert-success">
+            All payments have been confirmed.
+        </div>
+    }
+    else if (Model.AllConfirmed == false)
+    {
+        <p>Some payments are still waiting for confirmation.</p>
+    }
+    else
+    {
+        <p>This event has no payment records.</p>
+    }
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Recipient</th>
+                <th>Amount</th>
+                <th>Paid</th>
+                <th>Received</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var payment in Model.Payments)
+            {
+                var recipient = Model.Members
+                    .FirstOrDefault(u => u.Id == payment.RecipientId);
+
+                <tr>
+                    <td>@(recipient?.Name ?? "Unknown user")</td>
+                    <td>@payment.Amount.ToString("0.00")</td>
+                    <td>@(payment.PaidAtUtc.HasValue ? "Yes" : "Waiting")</td>
+                    <td>@(payment.ReceivedAtUtc.HasValue ? "Yes" : "Waiting")</td>
+                    <td>
+                        @if (payment.PayerId == Model.CurrentUserId &&
+                             !payment.PaidAtUtc.HasValue)
+                        {
+                            <form asp-controller="Payment"
+                                  asp-action="MarkPaid"
+                                  asp-route-paymentId="@payment.Id"
+                                  method="post">
+                                <button type="submit" class="btn btn-primary">
+                                    I have paid offline
+                                </button>
+                            </form>
+                        }
+
+                        @if (payment.RecipientId == Model.CurrentUserId &&
+                             payment.PaidAtUtc.HasValue &&
+                             !payment.ReceivedAtUtc.HasValue)
+                        {
+                            <form asp-controller="Payment"
+                                  asp-action="ConfirmReceived"
+                                  asp-route-paymentId="@payment.Id"
+                                  method="post">
+                                <button type="submit" class="btn btn-success">
+                                    I have received the payment
+                                </button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

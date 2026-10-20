@@ -1,0 +1,77 @@
+@model FiveDollarPlan.Models.PlanCreateViewModel
+
+@{
+    ViewData["Title"] = "Create a Plan";
+}
+
+<h1 class="h2 mb-2">Create a plan</h1>
+<p class="text-muted mb-4">Choose a goal period and how often a penalty event may be triggered.</p>
+
+<form asp-action="Create" method="post" class="col-lg-8">
+    @Html.AntiForgeryToken()
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+
+    <div class="mb-3">
+        <label asp-for="Name" class="form-label"></label>
+        <input asp-for="Name" class="form-control" autocomplete="off" />
+        <span asp-validation-for="Name" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Amount" class="form-label">Amount per participant (NZD)</label>
+        <div class="input-group">
+            <span class="input-group-text">NZ$</span>
+            <input asp-for="Amount" class="form-control" type="number" min="0" max="5" step="0.01" />
+        </div>
+        <span asp-validation-for="Amount" class="text-danger"></span>
+    </div>
+
+    <div class="mb-3">
+        <label asp-for="Mode" class="form-label">Penalty mode</label>
+        <select asp-for="Mode" class="form-select">
+            <option value="">Choose a mode</option>
+            <option value="0">Single occurrence</option>
+            <option value="1">Multiple occurrences</option>
+        </select>
+        <span asp-validation-for="Mode" class="text-danger"></span>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <label asp-for="StartAtLocal" class="form-label"></label>
+            <input asp-for="StartAtLocal" type="datetime-local" class="form-control" />
+            <span asp-validation-for="StartAtLocal" class="text-danger"></span>
+        </div>
+        <div class="col-md-6">
+            <label asp-for="EndAtLocal" class="form-label"></label>
+            <input asp-for="EndAtLocal" type="datetime-local" class="form-control" />
+            <span asp-validation-for="EndAtLocal" class="text-danger"></span>
+        </div>
+    </div>
+
+    <fieldset class="border rounded p-3 mb-4">
+        <legend class="float-none w-auto px-2 fs-6">Allowed trigger period (optional)</legend>
+        <p class="small text-muted">Enter a date and time range within the plan period. Times use Pacific/Auckland.</p>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label asp-for="TriggerStartAtLocal" class="form-label"></label>
+                <input asp-for="TriggerStartAtLocal" type="datetime-local" class="form-control" />
+                <span asp-validation-for="TriggerStartAtLocal" class="text-danger"></span>
+            </div>
+            <div class="col-md-6">
+                <label asp-for="TriggerEndAtLocal" class="form-label"></label>
+                <input asp-for="TriggerEndAtLocal" type="datetime-local" class="form-control" />
+                <span asp-validation-for="TriggerEndAtLocal" class="text-danger"></span>
+            </div>
+        </div>
+    </fieldset>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-success">Create plan</button>
+        <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

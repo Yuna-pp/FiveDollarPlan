@@ -49,23 +49,6 @@
         </div>
     </div>
 
-    <fieldset class="border rounded p-3 mb-4">
-        <legend class="float-none w-auto px-2 fs-6">Allowed trigger period (optional)</legend>
-        <p class="small text-muted">Enter a date and time range within the plan period. Times use Pacific/Auckland.</p>
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label asp-for="TriggerStartAtLocal" class="form-label"></label>
-                <input asp-for="TriggerStartAtLocal" type="datetime-local" class="form-control" />
-                <span asp-validation-for="TriggerStartAtLocal" class="text-danger"></span>
-            </div>
-            <div class="col-md-6">
-                <label asp-for="TriggerEndAtLocal" class="form-label"></label>
-                <input asp-for="TriggerEndAtLocal" type="datetime-local" class="form-control" />
-                <span asp-validation-for="TriggerEndAtLocal" class="text-danger"></span>
-            </div>
-        </div>
-    </fieldset>
-
     <div class="d-flex gap-2">
         <button type="submit" class="btn btn-success">Create plan</button>
         <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>

@@ -31,11 +31,16 @@ public class PaymentController : Controller
         _payments = payments;
     }
 
-    // 默认显示最新事件，也支持通过 eventId 查看指定事件。
+    // 显示全部历史事件；eventId 用于验证并定位操作对应的事件。
     [HttpGet("Details/{id:guid}")]
     public async Task<IActionResult> Details(
         Guid id, Guid? eventId = null)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest();
+        }
+
         var actorId = _currentUser.GetRequiredUserId();
         var plan = await _plans.GetPlanAsync(id);
 
@@ -54,38 +59,25 @@ public class PaymentController : Controller
         }
 
         // 指定的事件必须属于当前计划。
-        var eventQuery = _db.Set<PenaltyEvent>()
+        var events = await _db.Set<PenaltyEvent>()
             .AsNoTracking()
-            .Where(e => e.PlanId == id);
-
-        if (eventId.HasValue)
-        {
-            eventQuery = eventQuery.Where(
-                e => e.Id == eventId.Value);
-        }
-
-        var currentEvent = await eventQuery
+            .Where(e => e.PlanId == id)
             .OrderByDescending(e => e.TriggeredAtUtc)
             .ThenByDescending(e => e.Id)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (eventId.HasValue && currentEvent == null)
+        if (eventId.HasValue && !events.Any(e => e.Id == eventId.Value))
         {
             return NotFound();
         }
 
-        var payments = new List<PaymentRecord>();
+        var payments = await _db.Set<PaymentRecord>()
+            .AsNoTracking()
+            .Where(p => _db.Set<PenaltyEvent>().Any(
+                e => e.Id == p.PenaltyEventId && e.PlanId == id))
+            .OrderBy(p => p.RecipientId)
+            .ToListAsync();
 
-        if (currentEvent != null)
-        {
-            payments = await _db.Set<PaymentRecord>()
-                .AsNoTracking()
-                .Where(p => p.PenaltyEventId == currentEvent.Id)
-                .OrderBy(p => p.RecipientId)
-                .ToListAsync();
-        }
-
-        // 同时查询当前成员与这次事件的收款人资料。
         var profileIds = memberIds
             .Concat(payments.Select(p => p.RecipientId))
             .Append(plan.CreatorId)
@@ -103,7 +95,8 @@ public class PaymentController : Controller
             Members = profiles
                 .Where(u => memberIds.Contains(u.Id))
                 .ToList(),
-            CurrentEvent = currentEvent,
+            Events = events,
+            RecipientProfiles = profiles,
             Payments = payments
         };
 
@@ -214,10 +207,12 @@ public class PaymentController : Controller
         // 确认旧事件的付款后，仍返回该事件。
         return RedirectToAction(
             nameof(Details),
+            "Payment",
             new
             {
                 id = location.PlanId,
                 eventId = location.EventId
-            });
+            },
+            $"event-{location.EventId}");
     }
 }

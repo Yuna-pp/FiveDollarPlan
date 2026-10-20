@@ -2,6 +2,12 @@ namespace FiveDollarPlan.Models;
 
 public class PlanDetailsViewModel
 {
+    public IReadOnlyList<PenaltyEvent> Events { get; init; }
+        = Array.Empty<PenaltyEvent>();
+
+    public IReadOnlyList<UserProfileDto> RecipientProfiles { get; init; }
+        = Array.Empty<UserProfileDto>();
+
     // 计划名称、发起人、金额等信息
     public PlanDto Plan { get; init; } = null!;
 
@@ -15,18 +21,7 @@ public class PlanDetailsViewModel
     public IReadOnlyList<UserProfileDto> Members { get; init; }
         = Array.Empty<UserProfileDto>();
 
-    // 页面正在显示的违约事件
-    public PenaltyEvent? CurrentEvent { get; init; }
-
-    // 这个事件对应的付款记录
+    // 当前计划所有历史事件的付款记录，由视图按 PenaltyEventId 分组。
     public IReadOnlyList<PaymentRecord> Payments { get; init; }
         = Array.Empty<PaymentRecord>();
-
-    // 没有付款记录时，暂不判断全部完成
-    public bool? AllConfirmed =>
-        Payments.Count == 0
-            ? null
-            : Payments.All(p =>
-                p.PaidAtUtc.HasValue &&
-                p.ReceivedAtUtc.HasValue);
 }

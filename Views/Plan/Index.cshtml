@@ -1,0 +1,79 @@
+@model IReadOnlyList<FiveDollarPlan.Models.Plan>
+
+@{
+    ViewData["Title"] = "My Plans";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">My Plans</h1>
+        <p class="text-muted mb-0">Create a plan or join a friend with an invitation code.</p>
+    </div>
+    <a class="btn btn-success" asp-action="Create">Create a plan</a>
+</div>
+
+@if (TempData["SuccessMessage"] is string successMessage)
+{
+    <div class="alert alert-success" role="status">@successMessage</div>
+}
+@if (TempData["InfoMessage"] is string infoMessage)
+{
+    <div class="alert alert-info" role="status">@infoMessage</div>
+}
+@if (TempData["ErrorMessage"] is string errorMessage)
+{
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
+}
+@if (TempData["CreatedInviteUrl"] is string inviteUrl)
+{
+    <div class="alert alert-success">
+        <div class="fw-semibold mb-1">Your invitation link</div>
+        <a href="@inviteUrl">@inviteUrl</a>
+    </div>
+}
+
+<section class="card mb-4">
+    <div class="card-body">
+        <h2 class="h5">Join a plan</h2>
+        <form asp-action="Join" method="post" class="row g-2 align-items-end">
+            @Html.AntiForgeryToken()
+            <div class="col-sm-8 col-md-6">
+                <label class="form-label" for="InviteCode">Invitation code</label>
+                <input class="form-control text-uppercase" id="InviteCode" name="InviteCode" autocomplete="off" required />
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-outline-success">Join</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section>
+    <h2 class="h4 mb-3">Plans you belong to</h2>
+    @if (Model.Count == 0)
+    {
+        <p class="text-muted">No plans yet. Create one or join with an invitation code.</p>
+    }
+    else
+    {
+        <div class="row g-3">
+            @foreach (var plan in Model)
+            {
+                <div class="col-md-6 col-xl-4">
+                    <article class="card h-100">
+                        <div class="card-body">
+                            <h3 class="h5">@plan.Name</h3>
+                            <p class="mb-1">NZ$@plan.Amount.ToString("0.00") per participant</p>
+                            <p class="small text-muted mb-3">
+                                @(plan.Mode == FiveDollarPlan.Models.PlanMode.Single ? "Single occurrence" : "Multiple occurrences")
+                            </p>
+                            <a asp-action="Invite" asp-route-code="@plan.InviteCode" class="btn btn-sm btn-outline-secondary">
+                                View invitation
+                            </a>
+                        </div>
+                    </article>
+                </div>
+            }
+        </div>
+    }
+</section>

@@ -9,3 +9,5 @@ obj/
 
 appsettings.Development.json
 .env
+# Uploaded profile pictures
+wwwroot/uploads/avatars/

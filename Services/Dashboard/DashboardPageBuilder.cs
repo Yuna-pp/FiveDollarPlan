@@ -27,6 +27,10 @@ internal static class DashboardPageBuilder
         return new DashboardPageViewModel
         {
             DataAvailable = true,
+            WeeklySummary = new DashboardWeeklyViewModel(
+                DashboardWeeklyCalculator.Calculate(userId, userPayments, utcNow)
+                    .Select(week => new DashboardWeekViewModel(week.WeekStart, week.Income, week.Expenses))
+                    .ToArray()),
             ConfirmedIncome = summary.ConfirmedIncome,
             ConfirmedExpense = summary.ConfirmedExpense,
             PendingIncome = summary.PendingIncome,

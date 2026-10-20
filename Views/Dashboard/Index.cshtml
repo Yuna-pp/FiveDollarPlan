@@ -6,6 +6,10 @@
     string Money(decimal? amount) => amount.HasValue
         ? "NZ$" + amount.Value.ToString("F2", CultureInfo.GetCultureInfo("en-NZ"))
         : "—";
+    var weekly = Model.WeeklySummary;
+    var currentWeek = weekly?.CurrentWeek;
+    string WeekDate(DateOnly date) => date.ToString("dd MMM yyyy", CultureInfo.GetCultureInfo("en-NZ"));
+    string Percent(decimal value) => value.ToString("0.####", CultureInfo.InvariantCulture) + "%";
     var totals = new[]
     {
         (Label: "Confirmed Income", Amount: Model.ConfirmedIncome),
@@ -14,6 +18,8 @@
         (Label: "Pending Expense", Amount: Model.PendingExpense)
     };
 }
+
+<link rel="stylesheet" href="~/css/dashboard-weekly.css" asp-append-version="true" />
 
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
@@ -45,14 +51,15 @@ else if (!Model.DataAvailable)
     </div>
 }
 
-<section aria-label="Financial summary" class="mb-4">
+<section aria-labelledby="all-time-heading" class="mb-4">
+    <h2 id="all-time-heading" class="h5">All-time financial summary</h2>
     <div class="row g-3">
         @foreach (var total in totals)
         {
             <div class="col-12 col-sm-6 col-xl-3">
                 <div class="card h-100 shadow-sm">
                     <div class="card-body">
-                        <h2 class="h6 text-muted">@total.Label</h2>
+                        <h3 class="h6 text-muted">@total.Label</h3>
                         <p class="h3 mb-0">@Money(total.Amount)</p>
                     </div>
                 </div>
@@ -63,6 +70,116 @@ else if (!Model.DataAvailable)
         All amounts are in NZD. A payment is confirmed only when the recipient confirms receipt.
         Marked Paid amounts remain pending. Confirmations are self-reported, not bank verification.
     </p>
+</section>
+
+<section class="dashboard-weekly card mb-4" aria-labelledby="weekly-heading">
+    <div class="card-body">
+        <h2 id="weekly-heading" class="h4">Weekly Income &amp; Expenses</h2>
+        <p id="weekly-description" class="text-muted small">
+            Four Auckland calendar weeks, Monday to Sunday. Confirmed payments only, grouped by receipt confirmation date.
+            This week is to date; future-dated confirmations are excluded. All amounts are NZD.
+        </p>
+        @if (Model.IsPreview)
+        {
+            <p class="small fw-semibold text-warning-emphasis">Fictional preview figures — not your account activity.</p>
+        }
+        <div class="row g-3 mb-4">
+            @foreach (var card in new[]
+            {
+                (Label: "This Week Income", Amount: currentWeek?.Income, Style: "weekly-income-text"),
+                (Label: "This Week Expenses", Amount: currentWeek?.Expenses, Style: "weekly-expense-text"),
+                (Label: "Net Balance", Amount: currentWeek?.NetBalance, Style: "")
+            })
+            {
+                <div class="col-12 col-md-4">
+                    <div class="border rounded p-3 h-100">
+                        <h3 class="h6 text-muted">@card.Label</h3>
+                        <p class="h3 mb-0 @card.Style">@Money(card.Amount)</p>
+                    </div>
+                </div>
+            }
+        </div>
+        @if (weekly is null)
+        {
+            <p class="text-muted mb-0">Weekly payment data is not connected yet. Amounts and chart are unavailable.</p>
+        }
+        else
+        {
+            <p class="small mb-3"><strong>This week (to date):</strong> @WeekDate(weekly.CurrentWeek.WeekStart) – @WeekDate(weekly.CurrentWeek.WeekEnd), Pacific/Auckland.</p>
+            <div class="d-flex flex-wrap gap-3 small mb-3" aria-label="Chart legend">
+                <span><span class="weekly-swatch weekly-income" aria-hidden="true"></span> Income</span>
+                <span><span class="weekly-swatch weekly-expense" aria-hidden="true"></span> Expenses</span>
+            </div>
+            @if (weekly.ChartMaximum == 0m)
+            {
+                <p class="text-muted small">No confirmed payments in this four-week period.</p>
+            }
+            <figure class="mb-3" aria-labelledby="weekly-heading" aria-describedby="weekly-description">
+                <div class="weekly-scroll" tabindex="0" role="region" aria-label="Four-week income and expenses chart. Scroll horizontally on narrow screens.">
+                    <div class="weekly-chart">
+                        <div class="weekly-axis small text-muted" aria-hidden="true">
+                            <span>@Money(weekly.ChartMaximum)</span>
+                            <span>@Money(weekly.ChartMaximum / 2m)</span>
+                            <span>NZ$0.00</span>
+                        </div>
+                        <div class="weekly-groups">
+                            @foreach (var week in weekly.Weeks)
+                            {
+                                <div class="weekly-group">
+                                    <div class="weekly-bars">
+                                        <div>
+                                            <div class="weekly-track" aria-hidden="true">
+                                                <div class="weekly-bar weekly-income" style="height: @Percent(weekly.HeightPercent(week.Income))"></div>
+                                            </div>
+                                            <p class="weekly-value weekly-income-text"><span class="visually-hidden">Income: </span>@Money(week.Income)</p>
+                                        </div>
+                                        <div>
+                                            <div class="weekly-track" aria-hidden="true">
+                                                <div class="weekly-bar weekly-expense" style="height: @Percent(weekly.HeightPercent(week.Expenses))"></div>
+                                            </div>
+                                            <p class="weekly-value weekly-expense-text"><span class="visually-hidden">Expenses: </span>@Money(week.Expenses)</p>
+                                        </div>
+                                    </div>
+                                    <p class="weekly-date">@WeekDate(week.WeekStart)<br />– @WeekDate(week.WeekEnd)</p>
+                                    @if (ReferenceEquals(week, weekly.CurrentWeek))
+                                    {
+                                        <span class="badge bg-light text-dark border">This week (to date)</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <figcaption class="small text-muted mt-2">Income and expenses share one scale. On small screens, swipe or scroll to see all four weeks.</figcaption>
+            </figure>
+            <details class="border-top pt-3">
+                <summary class="fw-semibold">View exact weekly amounts</summary>
+                <div class="table-responsive mt-2">
+                    <table class="table table-sm align-middle mb-0">
+                        <caption>Confirmed payments by Auckland calendar week. Net Balance = Income − Expenses.</caption>
+                        <thead><tr><th scope="col">Week (Monday–Sunday)</th><th scope="col">Income (NZD)</th><th scope="col">Expenses (NZD)</th><th scope="col">Net Balance (NZD)</th></tr></thead>
+                        <tbody>
+                            @foreach (var week in weekly.Weeks)
+                            {
+                                <tr>
+                                    <th scope="row">
+                                        @WeekDate(week.WeekStart) – @WeekDate(week.WeekEnd)
+                                        @if (ReferenceEquals(week, weekly.CurrentWeek))
+                                        {
+                                            <span class="d-block small fw-normal">This week (to date)</span>
+                                        }
+                                    </th>
+                                    <td class="text-nowrap">@Money(week.Income)</td>
+                                    <td class="text-nowrap">@Money(week.Expenses)</td>
+                                    <td class="text-nowrap">@Money(week.NetBalance)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
+    </div>
 </section>
 
 <div class="row g-4 mb-4">

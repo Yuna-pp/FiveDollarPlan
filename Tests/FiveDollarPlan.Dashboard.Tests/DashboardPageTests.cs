@@ -194,6 +194,95 @@ public class DashboardPageTests
         Assert.Equal(expected, row.EndAtNewZealand);
     }
 
+    [Fact]
+    public void WeeklySummary_UsesLastChartGroupForCardsAndPreservesAllTimeTotals()
+    {
+        var model = Build(UserId, [],
+        [
+            new(OtherId, UserId, 2m, null, Now),
+            new(UserId, OtherId, 3m, null, Now),
+            new(OtherId, UserId, 4m, null, Now.AddDays(-7)),
+            new(OtherId, UserId, 5m, null, Now.AddDays(-40)),
+            new(OtherId, UserId, 1m, null, Now.AddDays(1))
+        ], Now);
+
+        var weekly = Assert.IsType<DashboardWeeklyViewModel>(model.WeeklySummary);
+        Assert.Equal(4, weekly.Weeks.Count);
+        Assert.Same(weekly.Weeks[^1], weekly.CurrentWeek);
+        Assert.Equal(2m, weekly.CurrentWeek.Income);
+        Assert.Equal(3m, weekly.CurrentWeek.Expenses);
+        Assert.Equal(-1m, weekly.CurrentWeek.NetBalance);
+        Assert.Equal(12m, model.ConfirmedIncome); // Existing all-time semantics remain unchanged.
+        Assert.Equal(6m, weekly.Weeks.Sum(w => w.Income));
+    }
+
+    [Fact]
+    public void Index_DoesNotInventWeeklyData()
+    {
+        var result = Assert.IsType<ViewResult>(new DashboardController(new TestEnvironment("Development")).Index());
+        var model = Assert.IsType<DashboardPageViewModel>(result.Model);
+
+        Assert.Null(model.WeeklySummary);
+        Assert.False(model.DataAvailable);
+    }
+
+    [Fact]
+    public void EmptyConnectedData_HasFourZeroWeeksAndSafeChartScale()
+    {
+        var weekly = Assert.IsType<DashboardWeeklyViewModel>(Build(UserId, [], [], Now).WeeklySummary);
+
+        Assert.Equal(4, weekly.Weeks.Count);
+        Assert.Equal(0m, weekly.ChartMaximum);
+        Assert.Equal(0m, weekly.HeightPercent(0m));
+        Assert.Equal(0m, weekly.CurrentWeek.NetBalance);
+    }
+
+    [Fact]
+    public void Chart_UsesSameScaleForIncomeAndExpenses()
+    {
+        var weekly = Assert.IsType<DashboardWeeklyViewModel>(Build(UserId, [],
+        [
+            new(OtherId, UserId, 4m, null, Now),
+            new(UserId, OtherId, 2m, null, Now),
+            new(OtherId, UserId, 1m, null, Now.AddDays(-7))
+        ], Now).WeeklySummary);
+
+        Assert.Equal(4m, weekly.ChartMaximum);
+        Assert.Equal(100m, weekly.HeightPercent(weekly.CurrentWeek.Income));
+        Assert.Equal(50m, weekly.HeightPercent(weekly.CurrentWeek.Expenses));
+        Assert.Equal(25m, weekly.HeightPercent(weekly.Weeks[2].Income));
+        Assert.Equal(0m, weekly.HeightPercent(0m));
+    }
+
+    [Fact]
+    public void ChartScale_DividesBeforeMultiplyingToAvoidOverflow()
+    {
+        var weekly = new DashboardWeeklyViewModel([new(new DateOnly(2026, 10, 19), decimal.MaxValue, 0m)]);
+
+        Assert.Equal(100m, weekly.HeightPercent(decimal.MaxValue));
+    }
+
+    [Theory]
+    [InlineData(2026, 10, 18, 11)] // Exactly Monday midnight in Auckland.
+    [InlineData(2026, 9, 27, 11)] // Monday after spring DST change.
+    [InlineData(2026, 4, 5, 12)] // Monday after autumn DST change.
+    public void Preview_ProvidesFourCalendarWeeksWithoutFuturePayments(int year, int month, int day, int hour)
+    {
+        var now = new DateTime(year, month, day, hour, 0, 0, DateTimeKind.Utc);
+        var model = DashboardPreviewData.Create(now);
+        var weekly = Assert.IsType<DashboardWeeklyViewModel>(model.WeeklySummary);
+
+        Assert.True(model.IsPreview);
+        Assert.Equal(4, weekly.Weeks.Count);
+        Assert.All(weekly.Weeks, w => { Assert.True(w.Income > 0m); Assert.True(w.Expenses > 0m); });
+        Assert.Equal(4m, weekly.Weeks.Sum(w => w.Income));
+        Assert.Equal(2.5m, weekly.Weeks.Sum(w => w.Expenses));
+        Assert.Equal(5m, model.ConfirmedIncome);
+        Assert.Equal(3m, model.ConfirmedExpense);
+        Assert.Equal(1.5m, weekly.CurrentWeek.Income);
+        Assert.Equal(1m, weekly.CurrentWeek.Expenses);
+    }
+
     private sealed class TestEnvironment(string environmentName) : IWebHostEnvironment
     {
         public string EnvironmentName { get; set; } = environmentName;

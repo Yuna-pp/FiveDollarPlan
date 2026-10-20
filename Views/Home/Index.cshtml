@@ -1,8 +1,32 @@
-﻿@{
-    ViewData["Title"] = "Home Page";
+@{
+    ViewData["Title"] = "Home";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="text-center mt-5">
+    <h1 class="display-4">Welcome to FiveDollarPlan!</h1>
+
+    <p class="lead mt-3">
+        Stay accountable, achieve your goals, and make every dollar count.
+    </p>
+
+    <div class="mt-4 d-flex justify-content-center flex-wrap gap-2">
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <a asp-controller="Dashboard" asp-action="Index" class="btn btn-success btn-lg">
+                Go to Dashboard
+            </a>
+            <a asp-controller="Plan" asp-action="Index" class="btn btn-outline-success btn-lg">
+                View Plans
+            </a>
+        }
+        else
+        {
+            <a asp-controller="Account" asp-action="Register" class="btn btn-success btn-lg">
+                Get Started
+            </a>
+            <a asp-controller="Account" asp-action="Login" class="btn btn-outline-success btn-lg">
+                Log In
+            </a>
+        }
+    </div>
 </div>

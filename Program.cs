@@ -3,8 +3,26 @@ using FiveDollarPlan.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using FiveDollarPlan.Models;
+using FiveDollarPlan.Services;
+
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<
+    ICurrentUserService,
+    CurrentUserService>();
+
+builder.Services.AddScoped<
+    IUserService,
+    UserService>();
+builder.Services.AddScoped<PlanService>();
+
+builder.Services.AddScoped<IPlanService>(sp =>
+    sp.GetRequiredService<PlanService>());
+
+builder.Services.AddScoped<IPlanWorkflowService>(sp =>
+    sp.GetRequiredService<PlanService>());
 
 var connectionString =
     builder.Configuration.GetConnectionString("DefaultConnection")

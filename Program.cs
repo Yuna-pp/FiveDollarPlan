@@ -5,8 +5,13 @@ using Microsoft.AspNetCore.Identity;
 using FiveDollarPlan.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var connectionString =
+    builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Data Source=fivedollar.db";
+
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=fivedollar.db"));
+    options.UseSqlite(connectionString));
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();

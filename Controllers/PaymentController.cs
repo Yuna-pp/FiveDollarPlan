@@ -31,11 +31,16 @@ public class PaymentController : Controller
         _payments = payments;
     }
 
-    // 默认显示最新事件，也支持通过 eventId 查看指定事件。
+    // 显示全部历史事件；eventId 用于验证并定位操作对应的事件。
     [HttpGet("Details/{id:guid}")]
     public async Task<IActionResult> Details(
         Guid id, Guid? eventId = null)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest();
+        }
+
         var actorId = _currentUser.GetRequiredUserId();
         var plan = await _plans.GetPlanAsync(id);
 
@@ -91,7 +96,6 @@ public class PaymentController : Controller
                 .Where(u => memberIds.Contains(u.Id))
                 .ToList(),
             Events = events,
-            CurrentEvent = events.FirstOrDefault(),
             RecipientProfiles = profiles,
             Payments = payments
         };
@@ -203,10 +207,12 @@ public class PaymentController : Controller
         // 确认旧事件的付款后，仍返回该事件。
         return RedirectToAction(
             nameof(Details),
+            "Payment",
             new
             {
                 id = location.PlanId,
                 eventId = location.EventId
-            });
+            },
+            $"event-{location.EventId}");
     }
 }

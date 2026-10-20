@@ -3,6 +3,8 @@
 @{
     ViewData["Title"] = "Plan Details";
     bool isCreator = Model.CurrentUserId == Model.Plan.CreatorId;
+    var paymentsByEvent = Model.Payments.ToLookup(payment => payment.PenaltyEventId);
+    var recipientsById = Model.RecipientProfiles.ToDictionary(profile => profile.Id);
 }
 
 <h1>@Model.Plan.Name</h1>
@@ -62,8 +64,7 @@ else
     <p>Newest breaches appear first.</p>
     @foreach (var penaltyEvent in Model.Events)
     {
-        var eventPayments = Model.Payments
-            .Where(p => p.PenaltyEventId == penaltyEvent.Id).ToList();
+        var eventPayments = paymentsByEvent[penaltyEvent.Id].ToList();
         bool? allConfirmed = eventPayments.Count == 0 ? null
             : eventPayments.All(p => p.PaidAtUtc.HasValue && p.ReceivedAtUtc.HasValue);
 
@@ -106,8 +107,7 @@ else
         <tbody>
             @foreach (var payment in eventPayments)
             {
-                var recipient = Model.RecipientProfiles
-                    .FirstOrDefault(u => u.Id == payment.RecipientId);
+                recipientsById.TryGetValue(payment.RecipientId, out var recipient);
 
                 <tr>
                     <td>@(recipient?.Name ?? "Unknown user")</td>

@@ -32,6 +32,23 @@ public class PlanService : IPlanService, IPlanWorkflowService
             })
             .SingleOrDefaultAsync();
     }
+
+    public async Task<IReadOnlyList<PlanSummaryDto>> GetPlansForUserAsync(Guid userId)
+    {
+        return await _dbContext.Set<Plan>()
+            .AsNoTracking()
+            .Where(plan => _dbContext.Set<PlanMember>()
+                .Any(member => member.PlanId == plan.Id && member.UserId == userId))
+            .OrderBy(plan => plan.EndAtUtc)
+            .Select(plan => new PlanSummaryDto
+            {
+                Id = plan.Id,
+                Name = plan.Name,
+                EndAtUtc = plan.EndAtUtc
+            })
+            .ToListAsync();
+    }
+
     public async Task<IReadOnlyList<Guid>> GetMemberIdsAtAsync(
         Guid planId,
         DateTime eventTimeUtc)

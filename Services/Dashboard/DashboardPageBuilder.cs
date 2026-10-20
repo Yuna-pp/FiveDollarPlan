@@ -11,11 +11,23 @@ internal static class DashboardPageBuilder
     internal static DashboardPageViewModel Build(Guid userId, IEnumerable<PlanInput> plans,
         IEnumerable<PaymentInput> payments, DateTime utcNow)
     {
+        var planModel = BuildPlans(plans, utcNow);
+        return BuildPayments(userId, payments, utcNow) with
+        {
+            PlanDataAvailable = planModel.PlanDataAvailable,
+            ActivePlans = planModel.ActivePlans,
+            EndedPlans = planModel.EndedPlans
+        };
+    }
+
+    internal static DashboardPageViewModel BuildPayments(Guid userId,
+        IEnumerable<PaymentInput> payments, DateTime utcNow)
+    {
         var userPayments = payments
             .Where(payment => payment.PayerId == userId || payment.RecipientId == userId)
             .ToArray();
         var summary = DashboardFinancialCalculator.Calculate(userId, userPayments);
-        return BuildPlans(plans, utcNow) with
+        return new DashboardPageViewModel
         {
             PaymentDataAvailable = true,
             WeeklySummary = new DashboardWeeklyViewModel(
@@ -47,7 +59,7 @@ internal static class DashboardPageBuilder
             (HasEnded(endAtUtc, utcNow) ? endedPlans : activePlans).Add(row);
         }
 
-        // Payment fields intentionally remain unavailable until their service is integrated.
+        // The caller composes independently loaded Plan and Payment sections.
         return new DashboardPageViewModel
         {
             PlanDataAvailable = true,

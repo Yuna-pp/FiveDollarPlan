@@ -28,6 +28,9 @@
     <Compile Include="../../Models/PlanSummaryDto.cs" Link="PlanSummaryDto.cs" />
     <Compile Include="../../Models/PlanDto.cs" Link="PlanDto.cs" />
     <Compile Include="../../Models/Plan.cs" Link="Plan.cs" />
+    <Compile Include="../../Services/IPaymentService.cs" Link="IPaymentService.cs" />
+    <Compile Include="../../Models/PaymentDto.cs" Link="PaymentDto.cs" />
+    <Compile Include="../../Models/PlanPaymentStatusDto.cs" Link="PlanPaymentStatusDto.cs" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

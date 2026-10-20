@@ -9,6 +9,7 @@ public sealed record DashboardPageViewModel
     public bool PlanDataAvailable { get; init; }
     public bool PaymentDataAvailable { get; init; }
     public string? PlanLoadError { get; init; }
+    public string? PaymentLoadError { get; init; }
     public bool IsPreview { get; init; }
     public bool CanPreview { get; init; }
     public decimal? ConfirmedIncome { get; init; }

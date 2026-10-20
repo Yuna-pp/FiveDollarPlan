@@ -10,19 +10,20 @@ namespace FiveDollarPlan.Controllers;
 
 [Authorize]
 public class DashboardController(IWebHostEnvironment environment,
-    ICurrentUserService currentUserService, IPlanService planService) : Controller
+    ICurrentUserService currentUserService, IPlanService planService, IPaymentService paymentService) : Controller
 {
     [HttpGet]
     public async Task<IActionResult> Index()
     {
         // Identity comes only from the existing authenticated session.
         var userId = currentUserService.GetRequiredUserId();
+        var utcNow = DateTime.UtcNow;
         DashboardPageViewModel model;
         try
         {
             var plans = await planService.GetPlansForUserAsync(userId);
             model = DashboardPageBuilder.BuildPlans(plans.Select(plan =>
-                new DashboardPageBuilder.PlanInput(plan.Id, plan.Name, plan.EndAtUtc)), DateTime.UtcNow);
+                new DashboardPageBuilder.PlanInput(plan.Id, plan.Name, plan.EndAtUtc)), utcNow);
         }
         catch (Exception)
         {
@@ -31,6 +32,26 @@ public class DashboardController(IWebHostEnvironment environment,
             {
                 PlanLoadError = "Unable to load your plans. Please try again later."
             };
+        }
+
+        // Await separately: both services may use the same scoped DbContext.
+        try
+        {
+            var payments = await paymentService.GetUserPaymentsAsync(userId);
+            var paymentModel = DashboardPageBuilder.BuildPayments(userId, payments.Select(payment =>
+                new DashboardFinancialCalculator.PaymentInput(payment.PayerId, payment.RecipientId,
+                    payment.Amount, payment.PaidAtUtc, payment.ReceivedAtUtc)), utcNow);
+            model = paymentModel with
+            {
+                PlanDataAvailable = model.PlanDataAvailable,
+                PlanLoadError = model.PlanLoadError,
+                ActivePlans = model.ActivePlans,
+                EndedPlans = model.EndedPlans
+            };
+        }
+        catch (Exception)
+        {
+            model = model with { PaymentLoadError = "Unable to load your payments. Please try again later." };
         }
 
         return View("Index", model with { CanPreview = environment.IsDevelopment() });

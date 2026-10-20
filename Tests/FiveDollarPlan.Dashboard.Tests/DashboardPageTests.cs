@@ -364,28 +364,195 @@ public class DashboardPageTests
         Assert.Empty(typeof(DashboardController).GetMethod(nameof(DashboardController.Index))!.GetParameters());
     }
 
-    private static DashboardController Controller(string environment, FakePlans? plans = null) =>
-        new(new TestEnvironment(environment), new FakeCurrentUser(), plans ?? new FakePlans());
+    [Fact]
+    public async Task Index_QueriesSequentiallyWithOneAuthenticatedIdentity()
+    {
+        var gate = new TaskCompletionSource<IReadOnlyList<PlanSummaryDto>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var plans = new FakePlans { Pending = gate.Task };
+        var payments = new FakePayments();
+        var identity = new FakeCurrentUser();
+        var controller = new DashboardController(new TestEnvironment("Development"), identity, plans, payments);
+        var request = controller.Index();
+        Assert.False(request.IsCompleted);
+        Assert.Null(payments.RequestedUser);
+        gate.SetResult([]);
+        await request;
+        Assert.Equal(1, identity.Calls);
+        Assert.Equal(UserId, plans.RequestedUser);
+        Assert.Equal(plans.RequestedUser, payments.RequestedUser);
+    }
+
+    [Fact]
+    public async Task Index_MapsRealPaymentsAndKeepsAccountingDirections()
+    {
+        var received = DateTime.UtcNow.AddMinutes(-1);
+        var payments = new FakePayments { Results = [
+            new() { PayerId = UserId, RecipientId = OtherId, Amount = 3.25m, PaidAtUtc = received, ReceivedAtUtc = received },
+            new() { PayerId = OtherId, RecipientId = UserId, Amount = 1.11m, ReceivedAtUtc = received },
+            new() { PayerId = OtherId, RecipientId = UserId, Amount = 2.22m, ReceivedAtUtc = received },
+            new() { PayerId = UserId, RecipientId = OtherId, Amount = 0.45m, PaidAtUtc = received },
+            new() { PayerId = OtherId, RecipientId = UserId, Amount = 0.67m },
+            new() { PayerId = OtherId, RecipientId = ThirdId, Amount = 5m, ReceivedAtUtc = received }] };
+        var model = Assert.IsType<DashboardPageViewModel>(Assert.IsType<ViewResult>(
+            await Controller("Development", payments: payments).Index()).Model);
+        Assert.True(model.PaymentDataAvailable);
+        Assert.Null(model.PaymentLoadError);
+        Assert.Equal(3.33m, model.ConfirmedIncome);
+        Assert.Equal(3.25m, model.ConfirmedExpense);
+        Assert.Equal(0.67m, model.PendingIncome);
+        Assert.Equal(0.45m, model.PendingExpense);
+        Assert.Equal(5, model.Payments.Count);
+        Assert.Equal("Expense", model.Payments[0].Direction);
+        Assert.Equal("Income", model.Payments[1].Direction);
+        Assert.Equal(DashboardPaymentState.MarkedPaid, model.Payments[3].State);
+        Assert.Equal(DashboardPaymentState.Pending, model.Payments[4].State);
+        var weekly = Assert.IsType<DashboardWeeklyViewModel>(model.WeeklySummary);
+        Assert.Equal(3.33m, weekly.Weeks.Sum(w => w.Income));
+        Assert.Equal(3.25m, weekly.Weeks.Sum(w => w.Expenses));
+        Assert.Same(weekly.Weeks[^1], weekly.CurrentWeek);
+    }
+
+    [Fact]
+    public async Task Index_SuccessfulEmptyPaymentsAreAvailableZeroValues()
+    {
+        var model = Assert.IsType<DashboardPageViewModel>(Assert.IsType<ViewResult>(
+            await Controller("Development", payments: new FakePayments()).Index()).Model);
+        Assert.True(model.PaymentDataAvailable);
+        Assert.Null(model.PaymentLoadError);
+        Assert.Equal(0m, model.ConfirmedIncome);
+        Assert.Equal(0m, model.ConfirmedExpense);
+        Assert.Equal(0m, model.PendingIncome);
+        Assert.Equal(0m, model.PendingExpense);
+        Assert.Empty(model.Payments);
+        Assert.Equal(4, model.WeeklySummary!.Weeks.Count);
+        Assert.All(model.WeeklySummary.Weeks, w => { Assert.Equal(0m, w.Income); Assert.Equal(0m, w.Expenses); });
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Index_QueryFailuresAreIndependent(bool planFails, bool paymentFails)
+    {
+        var plans = new FakePlans { Fail = planFails, Results = [new() { Id = OtherId, Name = "Real plan", EndAtUtc = DateTime.UtcNow.AddDays(1) }] };
+        var payments = new FakePayments { Fail = paymentFails, Results = [new() { PayerId = OtherId, RecipientId = UserId, Amount = 2m, ReceivedAtUtc = Now }] };
+        var model = Assert.IsType<DashboardPageViewModel>(Assert.IsType<ViewResult>(
+            await Controller("Development", plans, payments).Index()).Model);
+        Assert.Equal(!planFails, model.PlanDataAvailable);
+        Assert.Equal(!paymentFails, model.PaymentDataAvailable);
+        Assert.Equal(planFails ? 0 : 1, model.ActivePlans.Count);
+        Assert.Equal(planFails, model.PlanLoadError is not null);
+        Assert.Equal(paymentFails, model.PaymentLoadError is not null);
+        Assert.DoesNotContain("private", (model.PlanLoadError ?? "") + (model.PaymentLoadError ?? ""));
+        Assert.Equal(paymentFails ? (decimal?)null : 2m, model.ConfirmedIncome);
+        Assert.Equal(paymentFails, model.WeeklySummary is null);
+        Assert.Equal(UserId, payments.RequestedUser);
+    }
+
+    [Theory]
+    [InlineData(DateTimeKind.Utc)]
+    [InlineData(DateTimeKind.Unspecified)]
+    public void PaymentsOnly_UsesAucklandWeeksAndExcludesFutureAndPending(DateTimeKind kind)
+    {
+        var now = DateTime.SpecifyKind(Now, kind);
+        var model = BuildPayments(UserId, [
+            new(OtherId, UserId, 1.25m, now, now),
+            new(UserId, OtherId, 0.55m, now, now.AddDays(-7)),
+            new(OtherId, UserId, 2m, now, now.AddTicks(1)),
+            new(OtherId, UserId, 3m, now, null)], now);
+        var weekly = model.WeeklySummary!;
+        Assert.False(model.PlanDataAvailable);
+        Assert.True(model.PaymentDataAvailable);
+        Assert.Equal(new DateOnly(2026, 9, 28), weekly.Weeks[0].WeekStart);
+        Assert.Equal(new DateOnly(2026, 10, 19), weekly.CurrentWeek.WeekStart);
+        Assert.Equal(1.25m, weekly.CurrentWeek.Income);
+        Assert.Equal(1.25m, weekly.CurrentWeek.NetBalance);
+        Assert.Equal(0.55m, weekly.Weeks[^2].Expenses);
+        Assert.Equal(1.25m, weekly.Weeks.Sum(w => w.Income));
+        // All-time ReceivedAtUtc accounting is unchanged; future exclusion belongs to the weekly report.
+        Assert.Equal(3.25m, model.ConfirmedIncome);
+        Assert.Equal(3m, model.PendingIncome);
+    }
+
+    [Theory]
+    [InlineData(2026, 9, 27, 11)]
+    [InlineData(2026, 4, 5, 12)]
+    public void PaymentsOnly_UsesLocalMondayAcrossDaylightSaving(int year, int month, int day, int hour)
+    {
+        var now = new DateTime(year, month, day, hour, 0, 0, DateTimeKind.Utc);
+        var model = BuildPayments(UserId, [new(OtherId, UserId, 1m, null, now.AddTicks(-1)), new(OtherId, UserId, 2m, null, now)], now);
+        Assert.Equal(2m, model.WeeklySummary!.CurrentWeek.Income);
+        Assert.Equal(1m, model.WeeklySummary.Weeks[^2].Income);
+    }
+
+    [Fact]
+    public async Task Index_InvalidLocalPaymentDateDoesNotDiscardPlans()
+    {
+        var payments = new FakePayments { Results = [new() { PayerId = OtherId, RecipientId = UserId, Amount = 1m, ReceivedAtUtc = DateTime.SpecifyKind(Now, DateTimeKind.Local) }] };
+        var model = Assert.IsType<DashboardPageViewModel>(Assert.IsType<ViewResult>(
+            await Controller("Development", payments: payments).Index()).Model);
+        Assert.True(model.PlanDataAvailable);
+        Assert.False(model.PaymentDataAvailable);
+        Assert.NotNull(model.PaymentLoadError);
+        Assert.Null(model.ConfirmedIncome);
+        Assert.Null(model.WeeklySummary);
+    }
+
+    [Fact]
+    public void Preview_DoesNotResolveIdentityOrQueryPayments()
+    {
+        var identity = new FakeCurrentUser();
+        var payments = new FakePayments { Fail = true };
+        var controller = new DashboardController(new TestEnvironment("Development"), identity, new FakePlans { Fail = true }, payments);
+        var model = Assert.IsType<DashboardPageViewModel>(Assert.IsType<ViewResult>(controller.Preview()).Model);
+        Assert.True(model.IsPreview);
+        Assert.Equal(0, identity.Calls);
+        Assert.Null(payments.RequestedUser);
+        Assert.Equal(5m, model.ConfirmedIncome);
+    }
+
+    // Existing unavailable-data cases explicitly simulate an unavailable Payment service.
+    private static DashboardController Controller(string environment, FakePlans? plans = null, FakePayments? payments = null) =>
+        new(new TestEnvironment(environment), new FakeCurrentUser(), plans ?? new FakePlans(), payments ?? new FakePayments { Fail = true });
 
     private sealed class FakeCurrentUser : ICurrentUserService
     {
         public bool IsAuthenticated => true;
-        public Guid GetRequiredUserId() => UserId;
+        public int Calls { get; private set; }
+        public Guid GetRequiredUserId() { Calls++; return UserId; }
     }
 
     private sealed class FakePlans : IPlanService
     {
+        public Task<IReadOnlyList<PlanSummaryDto>>? Pending { get; init; }
         public Guid? RequestedUser { get; private set; }
         public bool Fail { get; init; }
         public IReadOnlyList<PlanSummaryDto> Results { get; init; } = [];
         public Task<IReadOnlyList<PlanSummaryDto>> GetPlansForUserAsync(Guid userId)
         {
             RequestedUser = userId;
+            if (Pending is not null) return Pending;
             return Fail ? Task.FromException<IReadOnlyList<PlanSummaryDto>>(new InvalidOperationException("private connection details"))
                 : Task.FromResult(Results);
         }
         public Task<PlanDto?> GetPlanAsync(Guid planId) => throw new NotSupportedException();
         public Task<IReadOnlyList<Guid>> GetMemberIdsAtAsync(Guid planId, DateTime eventTimeUtc) => throw new NotSupportedException();
+    }
+
+    private sealed class FakePayments : IPaymentService
+    {
+        public Guid? RequestedUser { get; private set; }
+        public bool Fail { get; init; }
+        public IReadOnlyList<PaymentDto> Results { get; init; } = [];
+        public Task<IReadOnlyList<PaymentDto>> GetUserPaymentsAsync(Guid userId)
+        {
+            RequestedUser = userId;
+            return Fail ? Task.FromException<IReadOnlyList<PaymentDto>>(new InvalidOperationException("private payment connection details")) : Task.FromResult(Results);
+        }
+        public Task<Guid> TriggerAsync(Guid planId, Guid actorId) => throw new NotSupportedException();
+        public Task MarkPaidAsync(Guid paymentId, Guid actorId) => throw new NotSupportedException();
+        public Task ConfirmReceivedAsync(Guid paymentId, Guid actorId) => throw new NotSupportedException();
+        public Task<PlanPaymentStatusDto> GetPlanPaymentStatusAsync(Guid planId) => throw new NotSupportedException();
     }
 
     private sealed class TestEnvironment(string environmentName) : IWebHostEnvironment

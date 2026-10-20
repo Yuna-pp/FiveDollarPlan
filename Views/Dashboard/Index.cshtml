@@ -46,8 +46,9 @@
 else if (!Model.PaymentDataAvailable)
 {
     <div class="alert alert-info" role="status">
-        <strong>Payment service not connected.</strong>
-        Your payment records and financial summaries are not available yet. A dash means unavailable, not a zero balance.
+        <strong>Payment data unavailable.</strong>
+        @(Model.PaymentLoadError ?? "Payment records could not be loaded.")
+        A dash means unavailable, not a zero balance.
     </div>
 }
 
@@ -106,7 +107,7 @@ else if (!Model.PaymentDataAvailable)
         </div>
         @if (weekly is null)
         {
-            <p class="text-muted mb-0">Weekly payment data is not connected yet. Amounts and chart are unavailable.</p>
+            <p class="text-muted mb-0">Weekly payment data could not be loaded. Amounts and chart are unavailable.</p>
         }
         else
         {
@@ -229,7 +230,7 @@ else if (!Model.PaymentDataAvailable)
     <div class="card-body">
         @if (!Model.PaymentDataAvailable)
         {
-            <p class="text-muted mb-0">Payment data is not connected yet.</p>
+            <p class="text-muted mb-0">Payment data could not be loaded.</p>
         }
         else if (Model.Payments.Count == 0)
         {

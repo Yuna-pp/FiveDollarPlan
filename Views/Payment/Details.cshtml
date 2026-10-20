@@ -98,8 +98,8 @@ else
                 <tr>
                     <td>@(recipient?.Name ?? "Unknown user")</td>
                     <td>@payment.Amount.ToString("0.00")</td>
-                    <td>@(payment.PaidAtUtc.HasValue ? "Yes" : "Waiting")</td>
-                    <td>@(payment.ReceivedAtUtc.HasValue ? "Yes" : "Waiting")</td>
+                    <td><span class="badge @(payment.PaidAtUtc.HasValue ? "bg-success" : "bg-secondary")">@(payment.PaidAtUtc.HasValue ? "Confirmed" : "Waiting")</span></td>
+                    <td><span class="badge @(payment.ReceivedAtUtc.HasValue ? "bg-success" : "bg-secondary")">@(payment.ReceivedAtUtc.HasValue ? "Confirmed" : "Waiting")</span></td>
                     <td>
                         @if (payment.PayerId == Model.CurrentUserId &&
                              !payment.PaidAtUtc.HasValue)

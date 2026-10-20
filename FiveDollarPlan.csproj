@@ -19,4 +19,9 @@
     <EmbeddedResource Remove="checks\**\*" />
     <None Remove="checks\**\*" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Tests/**/*.cs" />
+  </ItemGroup>
+
 </Project>

@@ -13,5 +13,10 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
   </ItemGroup>
-
+    <ItemGroup>
+    <Compile Remove="checks\**\*" />
+    <Content Remove="checks\**\*" />
+    <EmbeddedResource Remove="checks\**\*" />
+    <None Remove="checks\**\*" />
+  </ItemGroup>
 </Project>

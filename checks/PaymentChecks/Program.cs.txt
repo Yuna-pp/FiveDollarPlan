@@ -1,0 +1,347 @@
+﻿using FiveDollarPlan.Models;
+using FiveDollarPlan.Services;
+using FiveDollarPlan.Data;
+using Microsoft.EntityFrameworkCore;
+
+Guid payerId = Guid.NewGuid();
+Guid recipientId = Guid.NewGuid();
+Guid otherUserId = Guid.NewGuid();
+
+// 统一输出检查结果，失败时设置退出码。
+void Check(bool passed, string message)
+{
+    Console.WriteLine($"{(passed ? "PASS" : "FAIL")}：{message}");
+
+    if (!passed)
+    {
+        Environment.ExitCode = 1;
+    }
+}
+
+// 1. 别人不能代替付款人确认付款。
+var payment = new PaymentRecord
+{
+    PayerId = payerId,
+    RecipientId = recipientId,
+    Amount = 5m
+};
+
+bool rejected = false;
+
+try
+{
+    PaymentRules.MarkPaid(payment, otherUserId);
+}
+catch (UnauthorizedAccessException)
+{
+    rejected = true;
+}
+
+Check(
+    rejected && payment.PaidAtUtc == null,
+    "拒绝别人代确认付款，状态没有改变。");
+
+// 2. 还没确认付款，不能确认收款。
+rejected = false;
+
+try
+{
+    PaymentRules.ConfirmReceived(payment, recipientId);
+}
+catch (InvalidOperationException)
+{
+    rejected = true;
+}
+
+Check(
+    rejected &&
+    payment.PaidAtUtc == null &&
+    payment.ReceivedAtUtc == null,
+    "未付款不能确认收款，状态没有改变。");
+
+// 3. 正确的人按顺序确认，应该成功。
+PaymentRules.MarkPaid(payment, payerId);
+PaymentRules.ConfirmReceived(payment, recipientId);
+
+Check(
+    payment.PaidAtUtc.HasValue &&
+    payment.ReceivedAtUtc.HasValue &&
+    payment.ReceivedAtUtc.Value >= payment.PaidAtUtc.Value,
+    "付款、收款按顺序确认成功。");
+
+// 4. 别人不能代替收款人确认收款。
+var paidPayment = new PaymentRecord
+{
+    PayerId = payerId,
+    RecipientId = recipientId,
+    Amount = 5m
+};
+
+PaymentRules.MarkPaid(paidPayment, payerId);
+var paidAtBefore = paidPayment.PaidAtUtc;
+rejected = false;
+
+try
+{
+    PaymentRules.ConfirmReceived(paidPayment, otherUserId);
+}
+catch (UnauthorizedAccessException)
+{
+    rejected = true;
+}
+
+Check(
+    rejected &&
+    paidPayment.ReceivedAtUtc == null &&
+    paidPayment.PaidAtUtc == paidAtBefore,
+    "拒绝别人代确认收款，状态没有改变。");
+
+// 5. 重复确认不能覆盖第一次确认时间。
+var originalPaidAt = new DateTime(
+    2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+
+var originalReceivedAt = originalPaidAt.AddMinutes(5);
+
+var confirmedPayment = new PaymentRecord
+{
+    PayerId = payerId,
+    RecipientId = recipientId,
+    Amount = 5m,
+    PaidAtUtc = originalPaidAt,
+    ReceivedAtUtc = originalReceivedAt
+};
+
+PaymentRules.MarkPaid(confirmedPayment, payerId);
+PaymentRules.ConfirmReceived(confirmedPayment, recipientId);
+
+Check(
+    confirmedPayment.PaidAtUtc == originalPaidAt &&
+    confirmedPayment.ReceivedAtUtc == originalReceivedAt,
+    "重复确认不会改变第一次确认时间。");
+
+// 内存数据库只在这次检查期间存在。
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite("Data Source=:memory:")
+    .Options;
+
+await using var db = new AppDbContext(options);
+await db.Database.OpenConnectionAsync();
+await db.Database.EnsureCreatedAsync();
+
+// 准备发起人、参与者和稍后加入的人。
+var creator = new User
+{
+    Name = "Creator",
+    Email = "creator@test.local"
+};
+
+var member = new User
+{
+    Name = "Member",
+    Email = "member@test.local"
+};
+
+var lateMember = new User
+{
+    Name = "Late member",
+    Email = "late@test.local"
+};
+
+db.Users.AddRange(creator, member, lateMember);
+
+var now = DateTime.UtcNow;
+
+var singlePlan = new Plan
+{
+    CreatorId = creator.Id,
+    Name = "Single test",
+    Amount = 5m,
+    Mode = PlanMode.Single,
+    StartAtUtc = now.AddHours(-1),
+    EndAtUtc = now.AddHours(1),
+    InviteCode = "SINGLE-TEST"
+};
+
+db.Plans.Add(singlePlan);
+
+db.PlanMembers.AddRange(
+    new PlanMember
+    {
+        PlanId = singlePlan.Id,
+        UserId = creator.Id,
+        JoinedAtUtc = now.AddMinutes(-30)
+    },
+    new PlanMember
+    {
+        PlanId = singlePlan.Id,
+        UserId = member.Id,
+        JoinedAtUtc = now.AddMinutes(-30)
+    });
+
+await db.SaveChangesAsync();
+
+// 使用真实计划服务和事件服务，共享同一个数据库上下文。
+var planService = new PlanService(db);
+var eventService = new PenaltyEventService(db, planService);
+var paymentService = new PaymentService(db, eventService);
+
+// 6. 触发后只给参与者生成付款记录。
+var firstEventId = await paymentService.TriggerAsync(
+    singlePlan.Id, creator.Id);
+
+db.ChangeTracker.Clear();
+
+var firstPayments = await db.PaymentRecords
+    .AsNoTracking()
+    .Where(p => p.PenaltyEventId == firstEventId)
+    .ToListAsync();
+
+Check(
+    await db.PenaltyEvents.AnyAsync(e => e.Id == firstEventId) &&
+    firstPayments.Count == 1 &&
+    firstPayments[0].PayerId == creator.Id &&
+    firstPayments[0].RecipientId == member.Id &&
+    firstPayments[0].Amount == 5m,
+    "事件和付款记录已保存，发起人不会给自己付款。");
+
+// 7. 单次计划不能重复触发。
+bool duplicateRejected = false;
+
+try
+{
+    await paymentService.TriggerAsync(singlePlan.Id, creator.Id);
+}
+catch (InvalidOperationException)
+{
+    duplicateRejected = true;
+}
+
+Check(
+    duplicateRejected &&
+    await db.PenaltyEvents.CountAsync(
+        e => e.PlanId == singlePlan.Id) == 1 &&
+    await db.PaymentRecords.CountAsync(
+        p => p.PenaltyEventId == firstEventId) == 1,
+    "单次计划重复触发被拒绝，没有新增记录。");
+
+// 8. 后加入的成员不改变旧事件。
+db.PlanMembers.Add(new PlanMember
+{
+    PlanId = singlePlan.Id,
+    UserId = lateMember.Id,
+    JoinedAtUtc = DateTime.UtcNow
+});
+
+await db.SaveChangesAsync();
+
+Check(
+    await db.PaymentRecords.CountAsync(
+        p => p.PenaltyEventId == firstEventId) == 1 &&
+    !await db.PaymentRecords.AnyAsync(
+        p => p.PenaltyEventId == firstEventId &&
+             p.RecipientId == lateMember.Id),
+    "后来加入的成员不会被加进旧事件付款记录。");
+
+// 9. 付款、收款状态能真正存进数据库。
+var firstPaymentId = firstPayments.Single().Id;
+
+await paymentService.MarkPaidAsync(firstPaymentId, creator.Id);
+await paymentService.ConfirmReceivedAsync(firstPaymentId, member.Id);
+
+db.ChangeTracker.Clear();
+
+var savedPayment = await db.PaymentRecords
+    .AsNoTracking()
+    .SingleAsync(p => p.Id == firstPaymentId);
+
+var summary = await paymentService.GetPlanPaymentStatusAsync(
+    singlePlan.Id);
+
+Check(
+    savedPayment.PaidAtUtc.HasValue &&
+    savedPayment.ReceivedAtUtc.HasValue &&
+    summary.Events.Single().AllConfirmed == true,
+    "付款与收款状态已保存，汇总正确判断全部确认。");
+
+// 准备多次计划。
+var multiplePlan = new Plan
+{
+    CreatorId = creator.Id,
+    Name = "Multiple test",
+    Amount = 5m,
+    Mode = PlanMode.Multiple,
+    StartAtUtc = now.AddHours(-1),
+    EndAtUtc = now.AddHours(1),
+    TriggerStartAtUtc = now.AddMinutes(-30),
+    TriggerEndAtUtc = now.AddMinutes(30),
+    InviteCode = "MULTIPLE-TEST"
+};
+
+db.Plans.Add(multiplePlan);
+
+db.PlanMembers.AddRange(
+    new PlanMember
+    {
+        PlanId = multiplePlan.Id,
+        UserId = creator.Id,
+        JoinedAtUtc = now.AddMinutes(-20)
+    },
+    new PlanMember
+    {
+        PlanId = multiplePlan.Id,
+        UserId = member.Id,
+        JoinedAtUtc = now.AddMinutes(-20)
+    });
+
+await db.SaveChangesAsync();
+
+// 10. 两次事件的付款状态互不影响。
+var eventA = await paymentService.TriggerAsync(
+    multiplePlan.Id, creator.Id);
+
+var eventB = await paymentService.TriggerAsync(
+    multiplePlan.Id, creator.Id);
+
+var paymentA = await db.PaymentRecords
+    .AsNoTracking()
+    .SingleAsync(p => p.PenaltyEventId == eventA);
+
+await paymentService.MarkPaidAsync(paymentA.Id, creator.Id);
+await paymentService.ConfirmReceivedAsync(paymentA.Id, member.Id);
+
+db.ChangeTracker.Clear();
+
+var multipleSummary =
+    await paymentService.GetPlanPaymentStatusAsync(multiplePlan.Id);
+
+Check(
+    eventA != eventB &&
+    multipleSummary.Events.Count == 2 &&
+    multipleSummary.Events.Single(
+        e => e.PenaltyEventId == eventA).AllConfirmed == true &&
+    multipleSummary.Events.Single(
+        e => e.PenaltyEventId == eventB).PaidCount == 0 &&
+    multipleSummary.Events.Single(
+        e => e.PenaltyEventId == eventB).ReceivedCount == 0,
+    "多次违约分别记录状态，确认第一场不会改变第二场。");
+
+// 11. 参与者不能代替发起人触发违约。
+var eventCountBefore = await db.PenaltyEvents.CountAsync();
+var paymentCountBefore = await db.PaymentRecords.CountAsync();
+
+bool triggerRejected = false;
+
+try
+{
+    await paymentService.TriggerAsync(multiplePlan.Id, member.Id);
+}
+catch (UnauthorizedAccessException)
+{
+    triggerRejected = true;
+}
+
+Check(
+    triggerRejected &&
+    await db.PenaltyEvents.CountAsync() == eventCountBefore &&
+    await db.PaymentRecords.CountAsync() == paymentCountBefore,
+    "非发起人不能触发违约，数据库没有新增记录。");

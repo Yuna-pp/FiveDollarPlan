@@ -345,3 +345,129 @@ Check(
     await db.PenaltyEvents.CountAsync() == eventCountBefore &&
     await db.PaymentRecords.CountAsync() == paymentCountBefore,
     "非发起人不能触发违约，数据库没有新增记录。");
+// 12. 两个请求同时触发单次计划，只能成功一次。
+var temporaryDbPath = Path.Combine(
+    Path.GetTempPath(), $"payment-concurrency-{Guid.NewGuid():N}.db");
+
+var concurrentOptions = new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlite($"Data Source={temporaryDbPath};Pooling=False")
+    .Options;
+
+try
+{
+    Guid concurrentPlanId;
+    Guid concurrentCreatorId;
+
+    // 准备独立的测试数据库。
+    await using (var setup = new AppDbContext(concurrentOptions))
+    {
+        await setup.Database.EnsureCreatedAsync();
+
+        var testCreator = new User
+        {
+            Name = "Concurrent creator",
+            Email = "concurrent-creator@test.local"
+        };
+
+        var testMember = new User
+        {
+            Name = "Concurrent member",
+            Email = "concurrent-member@test.local"
+        };
+
+        var testPlan = new Plan
+        {
+            CreatorId = testCreator.Id,
+            Name = "Concurrent single plan",
+            Amount = 5m,
+            Mode = PlanMode.Single,
+            StartAtUtc = DateTime.UtcNow.AddHours(-1),
+            EndAtUtc = DateTime.UtcNow.AddHours(1),
+            InviteCode = "CONCURRENT-TEST"
+        };
+
+        setup.Users.AddRange(testCreator, testMember);
+        setup.Plans.Add(testPlan);
+        setup.PlanMembers.AddRange(
+            new PlanMember
+            {
+                PlanId = testPlan.Id,
+                UserId = testCreator.Id,
+                JoinedAtUtc = DateTime.UtcNow.AddMinutes(-10)
+            },
+            new PlanMember
+            {
+                PlanId = testPlan.Id,
+                UserId = testMember.Id,
+                JoinedAtUtc = DateTime.UtcNow.AddMinutes(-10)
+            });
+
+        await setup.SaveChangesAsync();
+
+        concurrentPlanId = testPlan.Id;
+        concurrentCreatorId = testCreator.Id;
+    }
+
+    var startGate = new TaskCompletionSource<bool>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    async Task<string> AttemptTriggerAsync()
+    {
+        await startGate.Task;
+
+        // 每个请求使用自己的上下文，不能共享同一个 DbContext。
+        await using var requestDb =
+            new AppDbContext(concurrentOptions);
+
+        var requestPlans = new PlanService(requestDb);
+        var requestEvents =
+            new PenaltyEventService(requestDb, requestPlans);
+
+        try
+        {
+            await requestEvents.TriggerAsync(
+                concurrentPlanId, concurrentCreatorId);
+
+            return "created";
+        }
+        catch (InvalidOperationException ex)
+            when (ex.Message ==
+                  "This single plan has already been triggered.")
+        {
+            return "duplicate";
+        }
+        catch (Exception ex)
+        {
+            return $"unexpected: {ex.GetType().Name}: {ex.Message}";
+        }
+    }
+
+    var requestOne = Task.Run(AttemptTriggerAsync);
+    var requestTwo = Task.Run(AttemptTriggerAsync);
+
+    startGate.SetResult(true);
+
+    var outcomes = await Task.WhenAll(requestOne, requestTwo);
+
+    await using var verify = new AppDbContext(concurrentOptions);
+
+    Check(
+        outcomes.Count(x => x == "created") == 1 &&
+        outcomes.Count(x => x == "duplicate") == 1 &&
+        await verify.PenaltyEvents.CountAsync() == 1 &&
+        await verify.PaymentRecords.CountAsync() == 1,
+        "并发触发单次计划，只创建一场事件和一笔付款。");
+
+    foreach (var outcome in outcomes)
+    {
+        Console.WriteLine($"并发请求结果：{outcome}");
+    }
+}
+finally
+{
+    // 只删除本次检查创建的临时数据库。
+    foreach (var suffix in new[] { "", "-wal", "-shm", "-journal" })
+    {
+        File.Delete(temporaryDbPath + suffix);
+    }
+}

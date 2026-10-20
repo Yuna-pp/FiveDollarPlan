@@ -61,4 +61,37 @@ public class PaymentService
             })
             .ToListAsync();
     }
+    public async Task<PlanPaymentStatusDto> GetPlanPaymentStatusAsync(
+        Guid planId)
+    {
+        var events = await _db.Set<PenaltyEvent>()
+            .AsNoTracking()
+            .Where(e => e.PlanId == planId)
+            .OrderBy(e => e.TriggeredAtUtc)
+            .ThenBy(e => e.Id)
+            .Select(e => new PenaltyEventStatusDto
+            {
+                PenaltyEventId = e.Id,
+                TriggeredAtUtc = e.TriggeredAtUtc,
+
+                TotalPayments = _db.Set<PaymentRecord>()
+                    .Count(p => p.PenaltyEventId == e.Id),
+
+                PaidCount = _db.Set<PaymentRecord>()
+                    .Count(p => p.PenaltyEventId == e.Id
+                        && p.PaidAtUtc != null),
+
+                ReceivedCount = _db.Set<PaymentRecord>()
+                    .Count(p => p.PenaltyEventId == e.Id
+                        && p.PaidAtUtc != null
+                        && p.ReceivedAtUtc != null)
+            })
+            .ToListAsync();
+
+        return new PlanPaymentStatusDto
+        {
+            PlanId = planId,
+            Events = events
+        };
+    }
 }

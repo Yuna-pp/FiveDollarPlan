@@ -15,25 +15,23 @@ public class PaymentController : Controller
     private readonly IPlanService _plans;
     private readonly IUserService _users;
     private readonly ICurrentUserService _currentUser;
-    private readonly PaymentService _payments;
-    private readonly PenaltyEventService _events;
+    private readonly IPaymentService _payments;
 
     public PaymentController(
         AppDbContext db,
         IPlanService plans,
         IUserService users,
         ICurrentUserService currentUser,
-        PaymentService payments,
-        PenaltyEventService events)
+        IPaymentService payments)
     {
         _db = db;
         _plans = plans;
         _users = users;
         _currentUser = currentUser;
         _payments = payments;
-        _events = events;
     }
 
+    // 显示计划详情，只允许发起人或成员查看。
     [HttpGet("Details/{id:guid}")]
     public async Task<IActionResult> Details(Guid id)
     {
@@ -86,13 +84,14 @@ public class PaymentController : Controller
         return View(model);
     }
 
+    // 通过付款服务触发违约。
     [HttpPost("Trigger")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Trigger(Guid planId)
     {
         try
         {
-            await _events.TriggerAsync(
+            await _payments.TriggerAsync(
                 planId, _currentUser.GetRequiredUserId());
 
             TempData["SuccessMessage"] = "Penalty event created.";
@@ -110,27 +109,32 @@ public class PaymentController : Controller
             TempData["PaymentError"] = ex.Message;
         }
 
-        return RedirectToAction(nameof(Details), new { id = planId });
+        return RedirectToAction(
+            nameof(Details), new { id = planId });
     }
 
+    // 付款人确认已经在线下付款。
     [HttpPost("MarkPaid/{paymentId:guid}")]
     [ValidateAntiForgeryToken]
     public Task<IActionResult> MarkPaid(Guid paymentId)
     {
-        return UpdatePaymentAsync(paymentId, confirmReceived: false);
+        return UpdatePaymentAsync(
+            paymentId, confirmReceived: false);
     }
 
+    // 收款人确认已经在线下收到付款。
     [HttpPost("ConfirmReceived/{paymentId:guid}")]
     [ValidateAntiForgeryToken]
     public Task<IActionResult> ConfirmReceived(Guid paymentId)
     {
-        return UpdatePaymentAsync(paymentId, confirmReceived: true);
+        return UpdatePaymentAsync(
+            paymentId, confirmReceived: true);
     }
 
     private async Task<IActionResult> UpdatePaymentAsync(
         Guid paymentId, bool confirmReceived)
     {
-        // 从数据库确定所属计划，不相信网页传来的计划编号。
+        // 从数据库查所属计划，避免相信网页传来的计划编号。
         var planId = await (
             from payment in _db.Set<PaymentRecord>()
             join penalty in _db.Set<PenaltyEvent>()
@@ -150,11 +154,13 @@ public class PaymentController : Controller
         {
             if (confirmReceived)
             {
-                await _payments.ConfirmReceivedAsync(paymentId, actorId);
+                await _payments.ConfirmReceivedAsync(
+                    paymentId, actorId);
             }
             else
             {
-                await _payments.MarkPaidAsync(paymentId, actorId);
+                await _payments.MarkPaidAsync(
+                    paymentId, actorId);
             }
 
             TempData["SuccessMessage"] = "Payment status updated.";

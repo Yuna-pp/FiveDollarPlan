@@ -1,9 +1,10 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using FiveDollarPlan.Models;
 
 namespace FiveDollarPlan.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : DbContext, IDataProtectionKeyContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options)
         : base(options)
@@ -14,6 +15,8 @@ public class AppDbContext : DbContext
     // Database Tables
     // =========================
 
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; }
+
     public DbSet<User> Users { get; set; }
     public DbSet<Plan> Plans { get; set; }
     public DbSet<PlanMember> PlanMembers { get; set; }
@@ -23,6 +26,9 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        // Keep the existing SQLite model/migrations unchanged for local development.
+        if (!Database.IsNpgsql())
+            modelBuilder.Ignore<DataProtectionKey>();
 
         // =========================
         // User

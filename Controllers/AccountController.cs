@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using Npgsql;
 using FiveDollarPlan.Data;
 using FiveDollarPlan.Models;
 using System.Security.Claims;
@@ -115,9 +116,12 @@ public class AccountController : Controller
             await _context.SaveChangesAsync();
         }
         catch (DbUpdateException ex)
-            when (ex.InnerException is SqliteException sqliteEx
+            when ((ex.InnerException is SqliteException sqliteEx
                 && sqliteEx.SqliteErrorCode == 19
                 && sqliteEx.SqliteExtendedErrorCode == 2067)
+                || (ex.InnerException is PostgresException postgresEx
+                    && postgresEx.SqlState == PostgresErrorCodes.UniqueViolation
+                    && postgresEx.ConstraintName == "IX_Users_Email"))
         {
             // Remove uploaded image if registration fails
             DeleteAvatar(avatarUrl);

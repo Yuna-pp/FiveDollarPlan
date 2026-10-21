@@ -119,6 +119,10 @@ with (ROOT / 'server.log').open('w') as log:
                 time.sleep(0.1)
         else:
             raise RuntimeError('Test server startup timed out')
+        home_status, _, home = anonymous.request('/')
+        check(home_status == 200 and 'Welcome to FiveDollarPlan!' in home, 'anonymous homepage')
+        check('href="/Account/Register"' in home and 'href="/Account/Login"' in home,
+              'anonymous homepage registration and login links')
         a, b, c = Browser(), Browser(), Browser()
         password = secrets.token_urlsafe(24)
         for browser, label in [(a, 'A'), (b, 'B'), (c, 'C')]:
@@ -128,6 +132,25 @@ with (ROOT / 'server.log').open('w') as log:
                                '/Account/Register')[0] == 302, 'register ' + label)
             check(browser.post('/Account/Login', dict(Email=email, Password=password),
                                '/Account/Login')[0] == 302, 'login ' + label)
+        home = a.request('/')[2]
+        home = re.search(r'<main[^>]*>(.*?)</main>', home, re.S)[1]
+        check('href="/Dashboard"' in home or 'href="/Dashboard/Index"' in home, 'authenticated homepage Dashboard link')
+        check('href="/Plan"' in home or 'href="/Plan/Index"' in home, 'authenticated homepage Plans link')
+        check('Get Started' not in home and 'href="/Account/Register"' not in home,
+              'authenticated homepage does not prompt registration')
+        for route in ['/Dashboard/Index', '/Dashboard/Preview']:
+            response = anonymous.request(route)
+            check(response[0] == 302 and '/Account/Login' in response[1], 'anonymous restriction ' + route)
+
+        def totals(browser, income, expense, label):
+            status, _, body = browser.request('/Dashboard/Index')
+            values = []
+            for title in ['Confirmed Income', 'Confirmed Expense']:
+                match = re.search(r'<h3[^>]*>' + title + r'</h3>\s*<p[^>]*>NZ\$([0-9]+\.[0-9]{2})</p>', body)
+                values.append(match[1] if match else None)
+            check(status == 200 and values == [income, expense], label)
+
+        totals(a, '0.00', '0.00', 'empty Dashboard totals')
         now = datetime.now(ZoneInfo('Pacific/Auckland'))
         plan_name = '<script>alert("plan")</script>'
 
@@ -171,6 +194,8 @@ with (ROOT / 'server.log').open('w') as log:
         check(a.request('/Payment/MarkPaid/' + payment, {})[0] == 400, 'antiforgery required')
         check(read('SELECT PaidAtUtc,ReceivedAtUtc FROM PaymentRecords WHERE Id=?', (payment,))[0] == (None, None), 'denied actions preserve state')
         check(anchor(a.post('/Payment/MarkPaid/' + payment, {}), plan, old), 'old MarkPaid redirects to event anchor')
+        totals(a, '0.00', '0.00', 'MarkedPaid has no confirmed expense')
+        totals(b, '0.00', '0.00', 'MarkedPaid has no confirmed income')
         group = sections(b.request(details)[2])[old.lower()]
         check(re.search(r'<td><span[^>]*>Confirmed</span></td>\s*<td><span[^>]*>Waiting</span></td>', group) is not None,
               'Paid and Received displayed independently')
@@ -178,6 +203,9 @@ with (ROOT / 'server.log').open('w') as log:
         groups = sections(a.request(details)[2])
         check('All payments have been confirmed.' in groups[old.lower()]
               and 'Some payments are still waiting' in groups[new.lower()], 'event confirmation independent')
+        totals(a, '0.00', '5.00', 'creator confirmed Dashboard expense')
+        totals(b, '5.00', '0.00', 'member confirmed Dashboard income')
+        totals(c, '0.00', '0.00', 'unrelated Dashboard remains zero')
         first_time = read('SELECT ReceivedAtUtc FROM PaymentRecords WHERE Id=?', (payment,))[0][0]
         check(anchor(b.post('/Payment/ConfirmReceived/' + payment, {}), plan, old)
               and read('SELECT ReceivedAtUtc FROM PaymentRecords WHERE Id=?', (payment,))[0][0] == first_time,
@@ -196,6 +224,9 @@ with (ROOT / 'server.log').open('w') as log:
         ordered = [row[0].lower() for row in read('SELECT Id FROM PenaltyEvents WHERE PlanId=? ORDER BY TriggeredAtUtc DESC,Id DESC', (plan,))]
         check(list(sections(a.request(details)[2])) == ordered, 'identical timestamps have stable ID ordering')
         check(read('PRAGMA integrity_check')[0][0] == 'ok', 'isolated database integrity')
+        check(a.post('/Account/Logout', {})[0] == 302, 'logout succeeds')
+        response = a.request('/Dashboard/Index')
+        check(response[0] == 302 and '/Account/Login' in response[1], 'logout removes authenticated access')
         print(f'RESULT: {passed} passed, {len(failures)} failed', flush=True)
         if failures:
             raise SystemExit(1)

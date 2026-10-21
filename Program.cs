@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using FiveDollarPlan.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -28,8 +29,26 @@ var connectionString =
     builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Data Source=fivedollar.db";
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite(connectionString));
+var databaseProvider = builder.Configuration["DatabaseProvider"] ?? "Sqlite";
+var usePostgres = databaseProvider.Equals("Postgres", StringComparison.OrdinalIgnoreCase);
+if (!usePostgres && !databaseProvider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+    throw new InvalidOperationException("DatabaseProvider must be Sqlite or Postgres.");
+
+if (usePostgres)
+{
+    var postgresConnection = builder.Configuration.GetConnectionString("Postgres")
+        ?? builder.Configuration["DATABASE_URL"]
+        ?? throw new InvalidOperationException("Postgres requires ConnectionStrings__Postgres or DATABASE_URL.");
+    var normalizedConnection = DatabaseConfiguration.NormalizePostgresConnection(postgresConnection);
+    builder.Services.AddDbContext<AppDbContext>(options => options.UseNpgsql(normalizedConnection));
+    builder.Services.AddDataProtection()
+        .SetApplicationName("FiveDollarPlan")
+        .PersistKeysToDbContext<AppDbContext>();
+}
+else
+{
+    builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
+}
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
@@ -82,7 +101,16 @@ app.MapControllerRoute(
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    if (usePostgres)
+    {
+        // PostgreSQL has its own schema. Never apply the SQLite-specific migrations here.
+        // Creates the initial schema only; it never drops or resets an existing database.
+        await db.Database.EnsureCreatedAsync();
+    }
+    else
+    {
+        await db.Database.MigrateAsync();
+    }
 }
 
 app.Run();

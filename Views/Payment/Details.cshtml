@@ -1,0 +1,152 @@
+@model FiveDollarPlan.Models.PlanDetailsViewModel
+
+@{
+    ViewData["Title"] = "Plan Details";
+    bool isCreator = Model.CurrentUserId == Model.Plan.CreatorId;
+    var paymentsByEvent = Model.Payments.ToLookup(payment => payment.PenaltyEventId);
+    var recipientsById = Model.RecipientProfiles.ToDictionary(profile => profile.Id);
+}
+
+<h1>@Model.Plan.Name</h1>
+
+<p>Creator: @(Model.Creator?.Name ?? "Unknown user")</p>
+<p>Amount per recipient: @Model.Plan.Amount.ToString("0.00")</p>
+<p>Mode: @Model.Plan.Mode</p>
+
+<h2>Members</h2>
+
+<ul>
+    @foreach (var member in Model.Members)
+    {
+        <li>
+            @if (!string.IsNullOrWhiteSpace(member.AvatarUrl))
+            {
+                <img src="@member.AvatarUrl"
+                     alt=""
+                     width="32"
+                     height="32" />
+            }
+            @member.Name
+        </li>
+    }
+</ul>
+
+@if (TempData["SuccessMessage"] is string success)
+{
+    <div class="alert alert-success">@success</div>
+}
+
+@if (TempData["PaymentError"] is string error)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (isCreator)
+{
+    <form asp-controller="Payment" asp-action="Trigger" method="post">
+        <input type="hidden" name="planId" value="@Model.Plan.Id" />
+        <button type="submit" class="btn btn-danger">
+            Record a breach
+        </button>
+    </form>
+}
+
+<hr />
+
+<h2>Payment status</h2>
+
+@if (Model.Events.Count == 0)
+{
+    <p>No penalty event yet.</p>
+}
+else
+{
+    <p>Newest breaches appear first.</p>
+    @foreach (var penaltyEvent in Model.Events)
+    {
+        var eventPayments = paymentsByEvent[penaltyEvent.Id].ToList();
+        bool? allConfirmed = eventPayments.Count == 0 ? null
+            : eventPayments.All(p => p.PaidAtUtc.HasValue && p.ReceivedAtUtc.HasValue);
+
+    <section class="card mb-4" id="event-@penaltyEvent.Id">
+    <div class="card-body">
+    <h3 class="h5">
+        Event time (UTC):
+        @penaltyEvent.TriggeredAtUtc.ToString("yyyy-MM-dd HH:mm:ss")
+        @if (penaltyEvent.Id == Model.Events[0].Id)
+        {
+            <span class="badge bg-primary">Latest</span>
+        }
+    </h3>
+
+    @if (allConfirmed == true)
+    {
+        <div class="alert alert-success">
+            All payments have been confirmed.
+        </div>
+    }
+    else if (allConfirmed == false)
+    {
+        <p>Some payments are still waiting for confirmation.</p>
+    }
+    else
+    {
+        <p>This event has no payment records.</p>
+    }
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Recipient</th>
+                <th>Amount</th>
+                <th>Paid</th>
+                <th>Received</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var payment in eventPayments)
+            {
+                recipientsById.TryGetValue(payment.RecipientId, out var recipient);
+
+                <tr>
+                    <td>@(recipient?.Name ?? "Unknown user")</td>
+                    <td>@payment.Amount.ToString("0.00")</td>
+                    <td><span class="badge @(payment.PaidAtUtc.HasValue ? "bg-success" : "bg-secondary")">@(payment.PaidAtUtc.HasValue ? "Confirmed" : "Waiting")</span></td>
+                    <td><span class="badge @(payment.ReceivedAtUtc.HasValue ? "bg-success" : "bg-secondary")">@(payment.ReceivedAtUtc.HasValue ? "Confirmed" : "Waiting")</span></td>
+                    <td>
+                        @if (payment.PayerId == Model.CurrentUserId &&
+                             !payment.PaidAtUtc.HasValue)
+                        {
+                            <form asp-controller="Payment"
+                                  asp-action="MarkPaid"
+                                  asp-route-paymentId="@payment.Id"
+                                  method="post">
+                                <button type="submit" class="btn btn-primary">
+                                    I have paid offline
+                                </button>
+                            </form>
+                        }
+
+                        @if (payment.RecipientId == Model.CurrentUserId &&
+                             payment.PaidAtUtc.HasValue &&
+                             !payment.ReceivedAtUtc.HasValue)
+                        {
+                            <form asp-controller="Payment"
+                                  asp-action="ConfirmReceived"
+                                  asp-route-paymentId="@payment.Id"
+                                  method="post">
+                                <button type="submit" class="btn btn-success">
+                                    I have received the payment
+                                </button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    </div>
+    </section>
+    }
+}

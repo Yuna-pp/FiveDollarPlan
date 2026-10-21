@@ -41,9 +41,6 @@ public class PlanController : Controller
 
         DateTime? startAtUtc = null;
         DateTime? endAtUtc = null;
-        DateTime? triggerStartAtUtc = null;
-        DateTime? triggerEndAtUtc = null;
-
         if (model.StartAtLocal.HasValue
             && TryConvertAucklandTime(model.StartAtLocal.Value, nameof(model.StartAtLocal), out var start))
         {
@@ -61,53 +58,6 @@ public class PlanController : Controller
             ModelState.AddModelError(nameof(model.EndAtLocal), "The end must be after the start.");
         }
 
-        var hasTriggerStart = model.TriggerStartAtLocal.HasValue;
-        var hasTriggerEnd = model.TriggerEndAtLocal.HasValue;
-        if (hasTriggerStart != hasTriggerEnd)
-        {
-            ModelState.AddModelError(
-                nameof(model.TriggerEndAtLocal),
-                "Enter both dates for the allowed trigger period, or leave both blank.");
-        }
-        else if (hasTriggerStart && hasTriggerEnd)
-        {
-            if (TryConvertAucklandTime(
-                    model.TriggerStartAtLocal!.Value,
-                    nameof(model.TriggerStartAtLocal),
-                    out var triggerStart))
-            {
-                triggerStartAtUtc = triggerStart;
-            }
-
-            if (TryConvertAucklandTime(
-                    model.TriggerEndAtLocal!.Value,
-                    nameof(model.TriggerEndAtLocal),
-                    out var triggerEnd))
-            {
-                triggerEndAtUtc = triggerEnd;
-            }
-
-            if (triggerStartAtUtc.HasValue && triggerEndAtUtc.HasValue)
-            {
-                if (triggerStartAtUtc >= triggerEndAtUtc)
-                {
-                    ModelState.AddModelError(
-                        nameof(model.TriggerEndAtLocal),
-                        "The allowed trigger period must end after it starts.");
-                }
-
-                if (startAtUtc.HasValue
-                    && triggerStartAtUtc < startAtUtc
-                    || endAtUtc.HasValue
-                    && triggerEndAtUtc > endAtUtc)
-                {
-                    ModelState.AddModelError(
-                        nameof(model.TriggerEndAtLocal),
-                        "The allowed trigger period must be within the plan dates.");
-                }
-            }
-        }
-
         if (!ModelState.IsValid || !model.Mode.HasValue
             || !startAtUtc.HasValue || !endAtUtc.HasValue)
         {
@@ -120,9 +70,7 @@ public class PlanController : Controller
             Amount = model.Amount,
             Mode = model.Mode.Value,
             StartAtUtc = startAtUtc.Value,
-            EndAtUtc = endAtUtc.Value,
-            TriggerStartAtUtc = triggerStartAtUtc,
-            TriggerEndAtUtc = triggerEndAtUtc
+            EndAtUtc = endAtUtc.Value
         };
 
         var createdPlan = await _plans.CreatePlanAsync(GetRequiredUserId(), plan);

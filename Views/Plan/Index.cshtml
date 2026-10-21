@@ -67,9 +67,14 @@
                             <p class="small text-muted mb-3">
                                 @(plan.Mode == FiveDollarPlan.Models.PlanMode.Single ? "Single occurrence" : "Multiple occurrences")
                             </p>
-                            <a asp-action="Invite" asp-route-code="@plan.InviteCode" class="btn btn-sm btn-outline-secondary">
-                                View invitation
-                            </a>
+                            <div class="d-flex flex-wrap gap-2">
+                                <a asp-action="Invite" asp-route-code="@plan.InviteCode" class="btn btn-sm btn-outline-secondary">
+                                    View invitation
+                                </a>
+                                <a asp-controller="Payment" asp-action="Details" asp-route-id="@plan.Id" class="btn btn-sm btn-outline-primary">
+                                    View Payments
+                                </a>
+                            </div>
                         </div>
                     </article>
                 </div>

@@ -1,0 +1,34 @@
+/* Dashboard-only chart styles. No global Bootstrap overrides. */
+.dashboard-weekly .weekly-income { background-color: #146c43; }
+.dashboard-weekly .weekly-expense { background-color: #b02a37; }
+.dashboard-weekly .weekly-income-text { color: #146c43; }
+.dashboard-weekly .weekly-expense-text { color: #b02a37; }
+.dashboard-weekly .weekly-swatch {
+    display: inline-block;
+    width: .85rem;
+    height: .85rem;
+    margin-right: .3rem;
+    border-radius: .15rem;
+}
+.dashboard-weekly .weekly-scroll { overflow-x: auto; padding: .5rem .25rem; }
+.dashboard-weekly .weekly-scroll:focus-visible,
+.dashboard-weekly summary:focus-visible { outline: 3px solid #146c43; outline-offset: 3px; }
+.dashboard-weekly .weekly-chart { display: grid; grid-template-columns: 5rem 1fr; gap: .75rem; min-width: 42rem; }
+.dashboard-weekly .weekly-axis { height: 12rem; display: flex; flex-direction: column; justify-content: space-between; text-align: right; }
+.dashboard-weekly .weekly-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.dashboard-weekly .weekly-group { text-align: center; min-width: 0; }
+.dashboard-weekly .weekly-bars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem; }
+.dashboard-weekly .weekly-track {
+    height: 12rem;
+    position: relative;
+    border-bottom: 1px solid #6c757d;
+    background: repeating-linear-gradient(to top, #dee2e6 0, #dee2e6 1px, transparent 1px, transparent 50%);
+}
+.dashboard-weekly .weekly-bar { position: absolute; bottom: 0; left: 12%; width: 76%; border-radius: .2rem .2rem 0 0; }
+.dashboard-weekly .weekly-value { font-size: .75rem; font-weight: 600; margin: .4rem 0; overflow-wrap: anywhere; }
+.dashboard-weekly .weekly-date { font-size: .8rem; margin: .25rem 0 .5rem; }
+.dashboard-weekly summary { cursor: pointer; }
+@media (max-width: 575.98px) {
+    .dashboard-weekly .weekly-chart { min-width: 36rem; grid-template-columns: 4.5rem 1fr; gap: .5rem; }
+    .dashboard-weekly .weekly-groups { gap: .65rem; }
+}

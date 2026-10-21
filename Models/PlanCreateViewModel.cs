@@ -21,9 +21,4 @@ public class PlanCreateViewModel
     [Display(Name = "Plan ends")]
     public DateTime? EndAtLocal { get; set; }
 
-    [Display(Name = "Allowed trigger period starts (optional)")]
-    public DateTime? TriggerStartAtLocal { get; set; }
-
-    [Display(Name = "Allowed trigger period ends (optional)")]
-    public DateTime? TriggerEndAtLocal { get; set; }
 }

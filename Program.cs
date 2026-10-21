@@ -51,8 +51,12 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
-var app = builder.Build();
+builder.Services.AddScoped<PenaltyEventService>();
+builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<IPaymentService>(sp =>
+    sp.GetRequiredService<PaymentService>());
 
+var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
